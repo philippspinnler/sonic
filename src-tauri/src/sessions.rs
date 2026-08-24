@@ -53,6 +53,12 @@ pub fn spawn(
     let mut cmd = CommandBuilder::new("/bin/zsh");
     cmd.args(["-lc", &shell_cmd]);
     cmd.cwd(&spec.cwd);
+    // If Sonic itself was launched from inside a Claude Code session, these
+    // inherited markers would make the child claude think it is a nested
+    // session and disable transcript persistence (breaking --resume).
+    for marker in ["CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT"] {
+        cmd.env_remove(marker);
+    }
     cmd.env("CLAUDE_CONFIG_DIR", &spec.config_dir);
     cmd.env("SONIC_SESSION_ID", &spec.session_id);
     cmd.env("SONIC_SOCKET", &spec.socket_path);
@@ -89,7 +95,7 @@ mod tests {
     use tempfile::tempdir;
 
     const FAKE_CLAUDE: &str = r#"#!/bin/sh
-echo "FAKE start cwd=$(pwd) config=$CLAUDE_CONFIG_DIR sid=$SONIC_SESSION_ID args=$*"
+echo "FAKE start cwd=$(pwd) config=$CLAUDE_CONFIG_DIR sid=$SONIC_SESSION_ID nested=<$CLAUDECODE$CLAUDE_CODE_CHILD_SESSION> args=$*"
 while read -r line; do
   [ "$line" = "quit" ] && exit 7
   echo "echo:$line"
@@ -106,6 +112,9 @@ done
 
     #[test]
     fn spawn_streams_env_stdin_and_exit() {
+        // simulate being launched from inside a Claude Code session
+        std::env::set_var("CLAUDECODE", "1");
+        std::env::set_var("CLAUDE_CODE_CHILD_SESSION", "1");
         let d = tempdir().unwrap();
         let work = tempdir().unwrap();
         let fake = write_fake(d.path());
@@ -138,6 +147,7 @@ done
         let s = String::from_utf8_lossy(&out.lock().unwrap()).into_owned();
         assert!(s.contains(&format!("config={}", d.path().join("cfg").display())));
         assert!(s.contains("sid=sid-1"));
+        assert!(s.contains("nested=<>"), "claude nesting markers must be stripped, got: {s}");
         assert!(s.contains("--resume resume-xyz"));
 
         proc.write(b"hello\r").unwrap();

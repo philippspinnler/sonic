@@ -40,6 +40,12 @@ export function ensureTerminal(id: string): void {
   term.onResize(({ cols, rows }) => {
     void resizeSession(id, cols, rows);
   });
+  // refit whenever the pane's actual box changes (layout shifts, sidebar,
+  // banner insertion) — window resize alone misses those
+  const ro = new ResizeObserver(() => {
+    if (el.offsetHeight > 0) fit.fit();
+  });
+  ro.observe(el);
   panes.set(id, { term, fit, el });
 }
 
