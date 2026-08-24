@@ -1,5 +1,6 @@
 pub mod hooks;
 pub mod profiles;
+pub mod sessions;
 pub mod state_store;
 
 pub fn run() {
