@@ -1,3 +1,4 @@
+pub mod hooks;
 pub mod state_store;
 
 pub fn run() {
