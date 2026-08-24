@@ -29,7 +29,11 @@ export function renderSidebar(): void {
     tag.style.color = s.profileColor;
     tag.style.borderColor = s.profileColor;
     const folder = row.querySelector<HTMLElement>(".folder")!;
-    folder.textContent = s.cwd.split("/").pop() ?? s.cwd;
+    const parts = s.cwd.split("/");
+    const basename = parts.pop() ?? s.cwd;
+    // default session name is the folder basename — don't print it twice;
+    // show where the folder lives instead
+    folder.textContent = s.name === basename ? shortenHome(parts.join("/")) : basename;
     folder.title = s.cwd;
     row.addEventListener("click", () => select(s.id));
     row.querySelector(".row-name")!.addEventListener("dblclick", e => {
@@ -64,6 +68,11 @@ export function renderSidebar(): void {
   footer.querySelector("#btn-settings")!.addEventListener("click", () =>
     window.dispatchEvent(new CustomEvent("sonic:settings")),
   );
+}
+
+function shortenHome(path: string): string {
+  const m = path.match(/^\/Users\/[^/]+(\/.*)?$/);
+  return m ? "~" + (m[1] ?? "") : path;
 }
 
 function startRename(row: HTMLElement, id: string, current: string): void {
