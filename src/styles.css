@@ -30,3 +30,14 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 .sidebar-footer { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #1f2335; }
 .sidebar-footer button { flex: 1; background: #292e42; color: var(--fg); border: 0; border-radius: 6px; padding: 6px; cursor: pointer; }
 .sidebar-footer #btn-settings { flex: none; width: 34px; }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex;
+  align-items: flex-start; justify-content: center; padding-top: 15vh; z-index: 10; }
+.dialog { background: var(--bg); border: 1px solid #292e42; border-radius: 10px;
+  min-width: 420px; max-width: 640px; padding: 16px; outline: none; }
+.dialog h2 { font-size: 13px; color: var(--dim); margin-bottom: 10px; font-weight: 600; }
+.pick-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px;
+  border-radius: 6px; cursor: pointer; }
+.pick-item:hover, .pick-item.selected { background: #292e42; }
+.pick-item .num { color: var(--dim); width: 14px; }
+.pick-item .path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; }

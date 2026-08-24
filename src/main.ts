@@ -3,6 +3,21 @@ import { renderSidebar } from "./sidebar";
 import { ensureTerminal, writeData, showTerminal, disposeTerminal } from "./terminals";
 import * as ipc from "./ipc";
 import type { SessionView } from "./store";
+import { openNewSessionDialog } from "./newSession";
+import { ask } from "@tauri-apps/plugin-dialog";
+
+async function closeSelected(): Promise<void> {
+  const { sessions, selectedId } = getState();
+  const s = sessions.find(x => x.id === selectedId);
+  if (!s) return;
+  if (s.status === "working") {
+    const yes = await ask(`"${s.name}" is still working. Close it anyway?`, { title: "Close session" });
+    if (!yes) return;
+  }
+  await ipc.closeSession(s.id);
+}
+
+window.addEventListener("sonic:new-session", () => void openNewSessionDialog());
 
 let knownIds = new Set<string>();
 
@@ -21,6 +36,11 @@ async function boot(): Promise<void> {
   await ipc.onSessionsChanged(s => void refresh(s));
   await ipc.onSessionData((id, b64) => writeData(id, b64));
   await ipc.onSessionStatus((id, status) => setStatus(id, status));
+  await ipc.onMenu(id => {
+    if (id === "new-session") void openNewSessionDialog();
+    else if (id === "close-session") void closeSelected();
+    else if (id === "settings") window.dispatchEvent(new CustomEvent("sonic:settings"));
+  });
   await refresh();
   renderSidebar();
 }
