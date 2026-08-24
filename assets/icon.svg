@@ -13,59 +13,64 @@
 
   <g clip-path="url(#squircle)">
     <!-- ears -->
-    <path d="M 320 455 L 305 185 L 505 325 Z" fill="#d99a6c"/>
-    <path d="M 704 455 L 719 185 L 519 325 Z" fill="#d99a6c"/>
+    <path d="M 320 455 L 305 185 L 505 325 Z" fill="#8b7867"/>
+    <path d="M 704 455 L 719 185 L 519 325 Z" fill="#8b7867"/>
     <!-- dark ear tips -->
-    <path d="M 305 185 L 310 266 L 365 227 Z" fill="#8c5432"/>
-    <path d="M 719 185 L 714 266 L 659 227 Z" fill="#8c5432"/>
+    <path d="M 305 185 L 310 266 L 365 227 Z" fill="#3f352d"/>
+    <path d="M 719 185 L 714 266 L 659 227 Z" fill="#3f352d"/>
     <!-- inner ears -->
-    <path d="M 342 432 L 330 262 L 468 342 Z" fill="#eab08a"/>
-    <path d="M 682 432 L 694 262 L 556 342 Z" fill="#eab08a"/>
+    <path d="M 342 432 L 330 262 L 468 342 Z" fill="#c9a094"/>
+    <path d="M 682 432 L 694 262 L 556 342 Z" fill="#c9a094"/>
 
     <!-- head -->
-    <ellipse cx="512" cy="575" rx="285" ry="255" fill="#d99a6c"/>
+    <ellipse cx="512" cy="575" rx="285" ry="255" fill="#8b7867"/>
 
-    <!-- forehead tabby M -->
-    <g stroke="#8c5432" stroke-linecap="round" fill="none">
-      <path d="M 512 338 L 512 452" stroke-width="32"/>
-      <path d="M 446 348 L 452 432" stroke-width="28"/>
-      <path d="M 578 348 L 572 432" stroke-width="28"/>
-      <path d="M 386 372 L 398 428" stroke-width="24"/>
-      <path d="M 638 372 L 626 428" stroke-width="24"/>
+    <!-- forehead tabby stripes -->
+    <g stroke="#3f352d" stroke-linecap="round" fill="none">
+      <path d="M 512 336 L 512 440" stroke-width="32"/>
+      <path d="M 446 346 L 452 428" stroke-width="28"/>
+      <path d="M 578 346 L 572 428" stroke-width="28"/>
+      <path d="M 386 370 L 398 426" stroke-width="24"/>
+      <path d="M 638 370 L 626 426" stroke-width="24"/>
+      <path d="M 330 430 L 350 470" stroke-width="20"/>
+      <path d="M 694 430 L 674 470" stroke-width="20"/>
     </g>
 
     <!-- cheek stripes -->
-    <g stroke="#8c5432" stroke-width="26" stroke-linecap="round" fill="none">
+    <g stroke="#3f352d" stroke-width="26" stroke-linecap="round" fill="none">
       <path d="M 244 548 L 330 540"/>
       <path d="M 252 610 L 334 596"/>
       <path d="M 780 548 L 694 540"/>
       <path d="M 772 610 L 690 596"/>
     </g>
 
-    <!-- muzzle -->
-    <circle cx="452" cy="678" r="80" fill="#f4d7ae"/>
-    <circle cx="572" cy="678" r="80" fill="#f4d7ae"/>
-    <ellipse cx="512" cy="722" rx="70" ry="56" fill="#f4d7ae"/>
+    <!-- white blaze: narrow between the eyes, widening over muzzle and chin -->
+    <path d="M 512 462 L 478 548 Q 440 640 452 738 Q 512 800 572 738 Q 584 640 546 548 Z" fill="#f5f2ee"/>
 
-    <!-- eyes -->
-    <ellipse cx="398" cy="548" rx="52" ry="58" fill="#9ece6a"/>
-    <ellipse cx="626" cy="548" rx="52" ry="58" fill="#9ece6a"/>
-    <ellipse cx="398" cy="552" rx="19" ry="36" fill="#1a1b26"/>
-    <ellipse cx="626" cy="552" rx="19" ry="36" fill="#1a1b26"/>
+    <!-- muzzle -->
+    <circle cx="452" cy="678" r="80" fill="#f5f2ee"/>
+    <circle cx="572" cy="678" r="80" fill="#f5f2ee"/>
+    <ellipse cx="512" cy="724" rx="72" ry="58" fill="#f5f2ee"/>
+
+    <!-- eyes: amber -->
+    <ellipse cx="398" cy="548" rx="52" ry="58" fill="#d4a955"/>
+    <ellipse cx="626" cy="548" rx="52" ry="58" fill="#d4a955"/>
+    <ellipse cx="398" cy="552" rx="24" ry="34" fill="#2a2320"/>
+    <ellipse cx="626" cy="552" rx="24" ry="34" fill="#2a2320"/>
     <circle cx="410" cy="530" r="10" fill="#ffffff" opacity="0.9"/>
     <circle cx="638" cy="530" r="10" fill="#ffffff" opacity="0.9"/>
 
-    <!-- nose -->
-    <path d="M 484 638 Q 512 622 540 638 Q 532 674 512 680 Q 492 674 484 638 Z" fill="#d97b6c"/>
+    <!-- pink nose -->
+    <path d="M 484 638 Q 512 622 540 638 Q 532 674 512 680 Q 492 674 484 638 Z" fill="#e9a3aa"/>
 
     <!-- mouth -->
-    <g stroke="#8c5432" stroke-width="13" stroke-linecap="round" fill="none">
+    <g stroke="#6b5a4e" stroke-width="12" stroke-linecap="round" fill="none">
       <path d="M 512 680 Q 512 712 476 716"/>
       <path d="M 512 680 Q 512 712 548 716"/>
     </g>
 
     <!-- whiskers -->
-    <g stroke="#f5e3c9" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.85">
+    <g stroke="#ffffff" stroke-width="9" stroke-linecap="round" fill="none" opacity="0.8">
       <path d="M 408 662 Q 320 648 246 662"/>
       <path d="M 412 694 Q 330 702 258 726"/>
       <path d="M 616 662 Q 704 648 778 662"/>
