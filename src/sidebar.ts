@@ -3,63 +3,18 @@ import { renameSession, revealInFinder, copyText, startSession, closeSession } f
 import { showContextMenu } from "./contextMenu";
 import { closeSessionWithConfirm, shortenHome } from "./actions";
 
-export function renderSidebar(): void {
+// Rows are updated in place and keyed by session id: rebuilding the DOM on
+// every store change breaks double-click (second click hits a new node) and
+// would destroy an in-progress rename input on any status event.
+const rows = new Map<string, HTMLElement>();
+let list: HTMLElement | null = null;
+
+function ensureShell(): HTMLElement {
+  if (list) return list;
   const el = document.getElementById("sidebar")!;
-  el.innerHTML = "";
-  const list = document.createElement("div");
+  list = document.createElement("div");
   list.className = "session-list";
-  const { sessions, selectedId } = getState();
-
-  for (const s of sessions) {
-    const row = document.createElement("div");
-    row.className =
-      "session-row" +
-      (s.id === selectedId ? " selected" : "") +
-      (s.status === "waiting" ? " waiting" : "");
-    row.innerHTML = `
-      <span class="dot ${s.status}"></span>
-      <span class="row-main">
-        <span class="row-top">
-          <span class="row-name"></span>
-          <span class="tag"></span>
-        </span>
-        <span class="folder"><bdi></bdi></span>
-      </span>`;
-    row.querySelector<HTMLElement>(".row-name")!.textContent = s.name;
-    const tag = row.querySelector<HTMLElement>(".tag")!;
-    tag.textContent = s.profileName;
-    tag.style.color = s.profileColor;
-    tag.style.borderColor = s.profileColor;
-    const folder = row.querySelector<HTMLElement>(".folder")!;
-    folder.querySelector("bdi")!.textContent = shortenHome(s.cwd);
-    folder.title = s.cwd;
-    row.addEventListener("click", () => select(s.id));
-    row.querySelector(".row-name")!.addEventListener("dblclick", e => {
-      e.stopPropagation();
-      startRename(row, s.id, s.name);
-    });
-    row.addEventListener("contextmenu", e => {
-      e.preventDefault();
-      select(s.id);
-      showContextMenu(e.clientX, e.clientY, contextItems(s));
-    });
-    if (s.status === "exited") {
-      const bar = document.createElement("span");
-      bar.className = "restart";
-      bar.textContent = "↻";
-      bar.title = "Restart in same folder";
-      bar.addEventListener("click", async e => {
-        e.stopPropagation();
-        await closeSession(s.id);
-        const id = await startSession(s.profileId, s.cwd, null, s.name);
-        select(id);
-      });
-      row.appendChild(bar);
-    }
-    list.appendChild(row);
-  }
   el.appendChild(list);
-
   const footer = document.createElement("div");
   footer.className = "sidebar-footer";
   footer.innerHTML = `<button id="btn-new">＋ New session</button><button id="btn-settings">⚙</button>`;
@@ -70,47 +25,127 @@ export function renderSidebar(): void {
   footer.querySelector("#btn-settings")!.addEventListener("click", () =>
     window.dispatchEvent(new CustomEvent("sonic:settings")),
   );
+  return list;
 }
 
-function contextItems(s: SessionView) {
+function createRow(id: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "session-row";
+  row.innerHTML = `
+    <span class="dot"></span>
+    <span class="row-main">
+      <span class="row-top">
+        <span class="row-name"></span>
+        <span class="tag"></span>
+      </span>
+      <span class="folder"><bdi></bdi></span>
+    </span>`;
+  row.addEventListener("click", () => {
+    if (getState().selectedId !== id) select(id);
+  });
+  row.querySelector(".row-name")!.addEventListener("dblclick", e => {
+    e.stopPropagation();
+    startRename(row, id);
+  });
+  row.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    if (getState().selectedId !== id) select(id);
+    const s = getState().sessions.find(x => x.id === id);
+    if (s) showContextMenu(e.clientX, e.clientY, contextItems(row, s));
+  });
+  return row;
+}
+
+function updateRow(row: HTMLElement, s: SessionView, selected: boolean): void {
+  row.className =
+    "session-row" + (selected ? " selected" : "") + (s.status === "waiting" ? " waiting" : "");
+  row.querySelector<HTMLElement>(".dot")!.className = `dot ${s.status}`;
+  const nameEl = row.querySelector<HTMLElement>(".row-name");
+  if (nameEl && nameEl.textContent !== s.name) nameEl.textContent = s.name; // absent while renaming
+  const tag = row.querySelector<HTMLElement>(".tag")!;
+  tag.textContent = s.profileName;
+  tag.style.color = s.profileColor;
+  tag.style.borderColor = s.profileColor;
+  const folder = row.querySelector<HTMLElement>(".folder")!;
+  folder.querySelector("bdi")!.textContent = shortenHome(s.cwd);
+  folder.title = s.cwd;
+
+  const existing = row.querySelector<HTMLElement>(".restart");
+  if (s.status === "exited" && !existing) {
+    const bar = document.createElement("span");
+    bar.className = "restart";
+    bar.textContent = "↻";
+    bar.title = "Restart in same folder";
+    bar.addEventListener("click", async e => {
+      e.stopPropagation();
+      await closeSession(s.id);
+      const id = await startSession(s.profileId, s.cwd, null, s.name);
+      select(id);
+    });
+    row.appendChild(bar);
+  } else if (s.status !== "exited" && existing) {
+    existing.remove();
+  }
+}
+
+export function renderSidebar(): void {
+  const list = ensureShell();
+  const { sessions, selectedId } = getState();
+  const seen = new Set<string>();
+  sessions.forEach((s, i) => {
+    seen.add(s.id);
+    let row = rows.get(s.id);
+    if (!row) {
+      row = createRow(s.id);
+      rows.set(s.id, row);
+    }
+    updateRow(row, s, s.id === selectedId);
+    // only move nodes whose position actually changed (moving blurs inputs)
+    if (list.children[i] !== row) list.insertBefore(row, list.children[i] ?? null);
+  });
+  for (const [id, row] of rows) {
+    if (!seen.has(id)) {
+      row.remove();
+      rows.delete(id);
+    }
+  }
+}
+
+function contextItems(row: HTMLElement, s: SessionView) {
   return [
-    {
-      label: "Rename…",
-      action: () => {
-        const row = [...document.querySelectorAll<HTMLElement>(".session-row")].find(
-          r => r.querySelector(".row-name")?.textContent === s.name,
-        );
-        if (row) startRename(row, s.id, s.name);
-      },
-    },
+    { label: "Rename…", action: () => startRename(row, s.id) },
     { label: "Reveal folder in Finder", action: () => void revealInFinder(s.cwd) },
     { label: "Copy folder path", action: () => void copyText(s.cwd) },
     { label: "Close session", danger: true, action: () => void closeSessionWithConfirm(s) },
   ];
 }
 
-function startRename(row: HTMLElement, id: string, current: string): void {
-  const nameEl = row.querySelector<HTMLElement>(".row-name")!;
+function startRename(row: HTMLElement, id: string): void {
+  const nameEl = row.querySelector<HTMLElement>(".row-name");
+  if (!nameEl) return; // already renaming
+  const current = nameEl.textContent ?? "";
   const input = document.createElement("input");
+  input.className = "rename-input";
   input.value = current;
   nameEl.replaceWith(input);
   input.focus();
   input.select();
   let done = false;
-  const commit = () => {
+  const finish = (save: boolean) => {
     if (done) return;
     done = true;
-    void renameSession(id, input.value.trim() || current);
+    input.replaceWith(nameEl);
+    const next = input.value.trim();
+    if (save && next && next !== current) void renameSession(id, next);
   };
   input.addEventListener("keydown", e => {
-    if (e.key === "Enter") commit();
-    if (e.key === "Escape") {
-      done = true;
-      input.replaceWith(nameEl);
-    }
+    if (e.key === "Enter") finish(true);
+    else if (e.key === "Escape") finish(false);
     e.stopPropagation();
   });
-  input.addEventListener("blur", commit);
+  input.addEventListener("blur", () => finish(true));
+  input.addEventListener("click", e => e.stopPropagation());
+  input.addEventListener("dblclick", e => e.stopPropagation());
 }
 
 subscribe(renderSidebar);
