@@ -54,6 +54,7 @@ path in Sonic's settings).
 ### Homebrew
 
 ```sh
+brew trust --cask philippspinnler/tap/sonic   # Homebrew 6+ requires trusting third-party casks
 brew install --cask philippspinnler/tap/sonic
 ```
 
