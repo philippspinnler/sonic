@@ -54,18 +54,19 @@ path in Sonic's settings).
 ### Homebrew
 
 ```sh
-brew install --cask --no-quarantine philippspinnler/tap/sonic
+brew install --cask philippspinnler/tap/sonic
 ```
 
-Sonic isn't notarized with Apple (that requires a paid Developer ID), so macOS would otherwise
-refuse to open a downloaded copy. `--no-quarantine` tells Homebrew to skip the quarantine flag.
-If you installed without it, clear the flag once:
+Update later with `brew upgrade --cask sonic`.
+
+Sonic isn't notarized with Apple (that requires a paid Developer ID), so macOS would normally
+refuse to open a downloaded copy. The cask clears the quarantine flag after installing, so it
+opens like any other app. If you copied the app manually instead and macOS calls it "damaged",
+run this once:
 
 ```sh
 xattr -cr /Applications/Sonic.app
 ```
-
-Update later with `brew upgrade --cask sonic`.
 
 ### From source
 
