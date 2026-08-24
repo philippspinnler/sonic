@@ -6,6 +6,8 @@ import type { SessionView } from "./store";
 import { openNewSessionDialog } from "./newSession";
 import { openSettings } from "./settings";
 import { initNotifications } from "./notify";
+import { maybeRestore } from "./restore";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 async function closeSelected(): Promise<void> {
@@ -47,6 +49,28 @@ async function boot(): Promise<void> {
   await initNotifications();
   await refresh();
   renderSidebar();
+
+  const bin = await ipc.checkClaude();
+  if (!bin) {
+    const banner = document.createElement("div");
+    banner.className = "banner";
+    banner.textContent =
+      "claude not found in your login shell PATH — set the binary path in Settings (⌘,)";
+    document.body.prepend(banner);
+  }
+
+  await maybeRestore();
+
+  await getCurrentWindow().onCloseRequested(async e => {
+    const working = getState().sessions.filter(s => s.status === "working");
+    if (working.length > 0) {
+      const yes = await ask(
+        `${working.length} session(s) are still working. Quit anyway? (They can be resumed on next launch.)`,
+        { title: "Quit Sonic" },
+      );
+      if (!yes) e.preventDefault();
+    }
+  });
 }
 
 window.addEventListener("keydown", e => {
