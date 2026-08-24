@@ -11,3 +11,22 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 #terminals { position: absolute; inset: 0; }
 .term-pane { position: absolute; inset: 0; padding: 6px; display: none; }
 .term-pane.active { display: block; }
+
+.session-list { flex: 1; padding: 8px 0; }
+.session-row { display: flex; gap: 8px; align-items: center; padding: 7px 12px; cursor: pointer; }
+.session-row:hover { background: #1f2335; }
+.session-row.selected { background: #292e42; }
+.session-row.waiting { box-shadow: inset 2px 0 0 var(--waiting); }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--dim); }
+.dot.working { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.dot.waiting { background: var(--waiting); }
+.dot.exited { background: var(--exited); opacity: 0.7; }
+.dot.unknown { background: transparent; border: 1.5px solid var(--dim); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.row-main { min-width: 0; display: flex; flex-direction: column; }
+.row-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sub { display: flex; gap: 6px; font-size: 11px; color: var(--dim); }
+.tag { border: 1px solid; border-radius: 3px; padding: 0 4px; }
+.sidebar-footer { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #1f2335; }
+.sidebar-footer button { flex: 1; background: #292e42; color: var(--fg); border: 0; border-radius: 6px; padding: 6px; cursor: pointer; }
+.sidebar-footer #btn-settings { flex: none; width: 34px; }
