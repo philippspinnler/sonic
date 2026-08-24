@@ -36,6 +36,20 @@ export function renderSidebar(): void {
       e.stopPropagation();
       startRename(row, s.id, s.name);
     });
+    if (s.status === "exited") {
+      const bar = document.createElement("span");
+      bar.className = "restart";
+      bar.textContent = "↻";
+      bar.title = "Restart in same folder";
+      bar.addEventListener("click", async e => {
+        e.stopPropagation();
+        const { closeSession, startSession } = await import("./ipc");
+        await closeSession(s.id);
+        const id = await startSession(s.profileId, s.cwd, null, s.name);
+        select(id);
+      });
+      row.appendChild(bar);
+    }
     list.appendChild(row);
   }
   el.appendChild(list);

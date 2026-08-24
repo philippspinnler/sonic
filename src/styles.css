@@ -54,3 +54,6 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 .field input:not([type="checkbox"]) { width: 100%; margin-top: 4px;
   background: #1f2335; border: 1px solid #292e42; color: var(--fg); border-radius: 5px; padding: 6px; }
 .field.row { display: flex; gap: 8px; align-items: center; }
+
+.restart { margin-left: auto; color: var(--dim); padding: 0 2px; }
+.restart:hover { color: var(--fg); }

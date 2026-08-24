@@ -5,6 +5,7 @@ import * as ipc from "./ipc";
 import type { SessionView } from "./store";
 import { openNewSessionDialog } from "./newSession";
 import { openSettings } from "./settings";
+import { initNotifications } from "./notify";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 async function closeSelected(): Promise<void> {
@@ -43,6 +44,7 @@ async function boot(): Promise<void> {
     else if (id === "close-session") void closeSelected();
     else if (id === "settings") window.dispatchEvent(new CustomEvent("sonic:settings"));
   });
+  await initNotifications();
   await refresh();
   renderSidebar();
 }
