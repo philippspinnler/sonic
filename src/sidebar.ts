@@ -19,11 +19,11 @@ export function renderSidebar(): void {
     row.innerHTML = `
       <span class="dot ${s.status}"></span>
       <span class="row-main">
-        <span class="row-name"></span>
-        <span class="row-sub">
+        <span class="row-top">
+          <span class="row-name"></span>
           <span class="tag"></span>
-          <span class="folder"><bdi></bdi></span>
         </span>
+        <span class="folder"><bdi></bdi></span>
       </span>`;
     row.querySelector<HTMLElement>(".row-name")!.textContent = s.name;
     const tag = row.querySelector<HTMLElement>(".tag")!;

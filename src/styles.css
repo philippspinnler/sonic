@@ -17,7 +17,8 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 .term-pane .xterm { padding: 6px; }
 
 .session-list { flex: 1; padding: 8px 0; }
-.session-row { display: flex; gap: 8px; align-items: center; padding: 7px 12px; cursor: pointer; }
+.session-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 12px; cursor: pointer; }
+.session-row .dot { margin-top: 5px; } /* centers on the name line, not the whole row */
 .session-row:hover { background: #1f2335; }
 .session-row.selected { background: #292e42; }
 .session-row.waiting { box-shadow: inset 2px 0 0 var(--waiting); }
@@ -27,12 +28,13 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 .dot.exited { background: var(--exited); opacity: 0.7; }
 .dot.unknown { background: transparent; border: 1.5px solid var(--dim); }
 @keyframes pulse { 50% { opacity: 0.35; } }
-.row-main { min-width: 0; display: flex; flex-direction: column; }
-.row-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row-sub { display: flex; gap: 6px; font-size: 11px; color: var(--dim); min-width: 0; }
-.tag { border: 1px solid; border-radius: 3px; padding: 0 4px; flex: none; }
+.row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.row-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.row-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tag { border: 1px solid; border-radius: 3px; padding: 0 4px; flex: none; font-size: 11px; }
 /* leading truncation: rtl container clips the start, bdi keeps the path itself ltr */
-.folder { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.folder { font-size: 11px; color: var(--dim); min-width: 0; overflow: hidden; white-space: nowrap;
+  text-overflow: ellipsis; direction: rtl; text-align: left; }
 .folder bdi { direction: ltr; unicode-bidi: isolate; }
 
 #sidebar-resizer { width: 5px; cursor: col-resize; background: transparent; flex: none; }
