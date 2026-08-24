@@ -41,3 +41,16 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 .pick-item:hover, .pick-item.selected { background: #292e42; }
 .pick-item .num { color: var(--dim); width: 14px; }
 .pick-item .path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; }
+
+.dialog.settings { min-width: 560px; user-select: text; }
+.profile-row { display: flex; gap: 8px; align-items: center; padding: 6px 0; }
+.pr-dir { flex: 1; color: var(--dim); font-size: 11px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; direction: rtl; }
+.profile-row button, .btn-row button { background: #292e42; color: var(--fg); border: 0;
+  border-radius: 5px; padding: 4px 8px; cursor: pointer; }
+.warn { color: var(--waiting); font-size: 11px; }
+.btn-row { display: flex; gap: 8px; margin: 10px 0 16px; }
+.field { display: block; margin: 8px 0; color: var(--dim); }
+.field input:not([type="checkbox"]) { width: 100%; margin-top: 4px;
+  background: #1f2335; border: 1px solid #292e42; color: var(--fg); border-radius: 5px; padding: 6px; }
+.field.row { display: flex; gap: 8px; align-items: center; }

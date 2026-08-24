@@ -4,6 +4,7 @@ import { ensureTerminal, writeData, showTerminal, disposeTerminal } from "./term
 import * as ipc from "./ipc";
 import type { SessionView } from "./store";
 import { openNewSessionDialog } from "./newSession";
+import { openSettings } from "./settings";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 async function closeSelected(): Promise<void> {
@@ -18,6 +19,7 @@ async function closeSelected(): Promise<void> {
 }
 
 window.addEventListener("sonic:new-session", () => void openNewSessionDialog());
+window.addEventListener("sonic:settings", () => void openSettings());
 
 let knownIds = new Set<string>();
 
