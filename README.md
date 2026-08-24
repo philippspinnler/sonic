@@ -48,10 +48,28 @@ when the profile is used from a plain terminal, so nothing changes outside Sonic
 
 ## Install
 
-Sonic is macOS-only and currently built from source.
+Sonic is macOS-only. It needs the `claude` CLI available in your login shell's `PATH` (or set its
+path in Sonic's settings).
 
-Requirements: [Rust](https://rustup.rs/) (1.88+), [Node.js](https://nodejs.org/) (20+), and the
-`claude` CLI available in your login shell's `PATH` (or set its path in Sonic's settings).
+### Homebrew
+
+```sh
+brew install --cask --no-quarantine philippspinnler/tap/sonic
+```
+
+Sonic isn't notarized with Apple (that requires a paid Developer ID), so macOS would otherwise
+refuse to open a downloaded copy. `--no-quarantine` tells Homebrew to skip the quarantine flag.
+If you installed without it, clear the flag once:
+
+```sh
+xattr -cr /Applications/Sonic.app
+```
+
+Update later with `brew upgrade --cask sonic`.
+
+### From source
+
+Requirements: [Rust](https://rustup.rs/) (1.88+) and [Node.js](https://nodejs.org/) (20+).
 
 ```sh
 git clone git@github.com:philippspinnler/sonic.git
@@ -107,6 +125,17 @@ no framework. Design notes are in `docs/`.
 
 Sonic never modifies Claude Code itself; it only uses environment variables, hooks, and
 `claude --resume`.
+
+### Releasing
+
+Bump `version` in `package.json` and `src-tauri/tauri.conf.json`, then:
+
+```sh
+npm run tauri build
+ditto -c -k --keepParent src-tauri/target/release/bundle/macos/Sonic.app release/Sonic-X.Y.Z.zip
+gh release create vX.Y.Z release/Sonic-X.Y.Z.zip --title "Sonic X.Y.Z"
+shasum -a 256 release/Sonic-X.Y.Z.zip   # paste into Casks/sonic.rb in philippspinnler/homebrew-tap
+```
 
 ## Limitations
 
