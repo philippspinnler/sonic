@@ -9,8 +9,12 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 #sidebar { width: 240px; min-width: 180px; background: var(--bg); overflow-y: auto; display: flex; flex-direction: column; }
 #main { flex: 1; position: relative; }
 #terminals { position: absolute; inset: 0; }
-.term-pane { position: absolute; inset: 0; padding: 6px; display: none; }
+.term-pane { position: absolute; inset: 0; display: none; }
 .term-pane.active { display: block; }
+/* padding must live on the .xterm element itself — FitAddon subtracts this
+   element's padding when computing rows; padding on the pane would make it
+   overestimate the available height and clip the bottom row */
+.term-pane .xterm { padding: 6px; }
 
 .session-list { flex: 1; padding: 8px 0; }
 .session-row { display: flex; gap: 8px; align-items: center; padding: 7px 12px; cursor: pointer; }

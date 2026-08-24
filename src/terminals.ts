@@ -46,6 +46,7 @@ export function ensureTerminal(id: string): void {
     if (el.offsetHeight > 0) fit.fit();
   });
   ro.observe(el);
+  if (term.element) ro.observe(term.element);
   panes.set(id, { term, fit, el });
 }
 
