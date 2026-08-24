@@ -2,6 +2,7 @@ pub mod hooks;
 pub mod profiles;
 pub mod sessions;
 pub mod state_store;
+pub mod status;
 
 pub fn run() {
     tauri::Builder::default()
