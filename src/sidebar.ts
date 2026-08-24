@@ -1,5 +1,7 @@
-import { getState, select, subscribe } from "./store";
-import { renameSession } from "./ipc";
+import { getState, select, subscribe, SessionView } from "./store";
+import { renameSession, revealInFinder, copyText, startSession, closeSession } from "./ipc";
+import { showContextMenu } from "./contextMenu";
+import { closeSessionWithConfirm, shortenHome } from "./actions";
 
 export function renderSidebar(): void {
   const el = document.getElementById("sidebar")!;
@@ -20,7 +22,7 @@ export function renderSidebar(): void {
         <span class="row-name"></span>
         <span class="row-sub">
           <span class="tag"></span>
-          <span class="folder"></span>
+          <span class="folder"><bdi></bdi></span>
         </span>
       </span>`;
     row.querySelector<HTMLElement>(".row-name")!.textContent = s.name;
@@ -29,16 +31,17 @@ export function renderSidebar(): void {
     tag.style.color = s.profileColor;
     tag.style.borderColor = s.profileColor;
     const folder = row.querySelector<HTMLElement>(".folder")!;
-    const parts = s.cwd.split("/");
-    const basename = parts.pop() ?? s.cwd;
-    // default session name is the folder basename — don't print it twice;
-    // show where the folder lives instead
-    folder.textContent = s.name === basename ? shortenHome(parts.join("/")) : basename;
+    folder.querySelector("bdi")!.textContent = shortenHome(s.cwd);
     folder.title = s.cwd;
     row.addEventListener("click", () => select(s.id));
     row.querySelector(".row-name")!.addEventListener("dblclick", e => {
       e.stopPropagation();
       startRename(row, s.id, s.name);
+    });
+    row.addEventListener("contextmenu", e => {
+      e.preventDefault();
+      select(s.id);
+      showContextMenu(e.clientX, e.clientY, contextItems(s));
     });
     if (s.status === "exited") {
       const bar = document.createElement("span");
@@ -47,7 +50,6 @@ export function renderSidebar(): void {
       bar.title = "Restart in same folder";
       bar.addEventListener("click", async e => {
         e.stopPropagation();
-        const { closeSession, startSession } = await import("./ipc");
         await closeSession(s.id);
         const id = await startSession(s.profileId, s.cwd, null, s.name);
         select(id);
@@ -70,9 +72,21 @@ export function renderSidebar(): void {
   );
 }
 
-function shortenHome(path: string): string {
-  const m = path.match(/^\/Users\/[^/]+(\/.*)?$/);
-  return m ? "~" + (m[1] ?? "") : path;
+function contextItems(s: SessionView) {
+  return [
+    {
+      label: "Rename…",
+      action: () => {
+        const row = [...document.querySelectorAll<HTMLElement>(".session-row")].find(
+          r => r.querySelector(".row-name")?.textContent === s.name,
+        );
+        if (row) startRename(row, s.id, s.name);
+      },
+    },
+    { label: "Reveal folder in Finder", action: () => void revealInFinder(s.cwd) },
+    { label: "Copy folder path", action: () => void copyText(s.cwd) },
+    { label: "Close session", danger: true, action: () => void closeSessionWithConfirm(s) },
+  ];
 }
 
 function startRename(row: HTMLElement, id: string, current: string): void {
@@ -82,12 +96,18 @@ function startRename(row: HTMLElement, id: string, current: string): void {
   nameEl.replaceWith(input);
   input.focus();
   input.select();
+  let done = false;
   const commit = () => {
+    if (done) return;
+    done = true;
     void renameSession(id, input.value.trim() || current);
   };
   input.addEventListener("keydown", e => {
     if (e.key === "Enter") commit();
-    if (e.key === "Escape") input.replaceWith(nameEl);
+    if (e.key === "Escape") {
+      done = true;
+      input.replaceWith(nameEl);
+    }
     e.stopPropagation();
   });
   input.addEventListener("blur", commit);

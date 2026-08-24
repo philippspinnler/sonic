@@ -8,17 +8,15 @@ import { openSettings } from "./settings";
 import { initNotifications } from "./notify";
 import { maybeRestore } from "./restore";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { closeSessionWithConfirm } from "./actions";
+import { initSidebarResizer } from "./layout";
+import { initEmptyState } from "./emptyState";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 async function closeSelected(): Promise<void> {
   const { sessions, selectedId } = getState();
   const s = sessions.find(x => x.id === selectedId);
-  if (!s) return;
-  if (s.status === "working") {
-    const yes = await ask(`"${s.name}" is still working. Close it anyway?`, { title: "Close session" });
-    if (!yes) return;
-  }
-  await ipc.closeSession(s.id);
+  if (s) await closeSessionWithConfirm(s);
 }
 
 window.addEventListener("sonic:new-session", () => void openNewSessionDialog());
@@ -47,6 +45,8 @@ async function boot(): Promise<void> {
     else if (id === "settings") window.dispatchEvent(new CustomEvent("sonic:settings"));
   });
   await initNotifications();
+  initSidebarResizer();
+  initEmptyState();
   await refresh();
   renderSidebar();
 

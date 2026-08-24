@@ -9,7 +9,7 @@ export function closeDialog(): void {
   overlay = null;
 }
 
-export async function openNewSessionDialog(): Promise<void> {
+export async function openNewSessionDialog(preselected?: Profile): Promise<void> {
   closeDialog();
   const profiles = await listProfiles();
   if (profiles.length === 0) {
@@ -25,7 +25,8 @@ export async function openNewSessionDialog(): Promise<void> {
   box.className = "dialog";
   overlay.appendChild(box);
   document.body.appendChild(overlay);
-  renderProfileStep(box, profiles);
+  if (preselected) void renderFolderStep(box, preselected);
+  else renderProfileStep(box, profiles);
 }
 
 function keyNav(box: HTMLElement, onPick: (i: number) => void): void {

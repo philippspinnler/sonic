@@ -281,6 +281,24 @@ pub fn check_claude(ctx: State<AppCtx>) -> Option<String> {
 }
 
 #[tauri::command]
+pub fn reveal_in_finder(path: String) -> Result<(), String> {
+    std::process::Command::new("open").arg(&path).status().map_err(err)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn copy_text(text: String) -> Result<(), String> {
+    use std::io::Write;
+    let mut child = std::process::Command::new("pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(err)?;
+    child.stdin.take().ok_or("no stdin")?.write_all(text.as_bytes()).map_err(err)?;
+    child.wait().map_err(err)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_badge(app: AppHandle, count: i64) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_badge_count(if count > 0 { Some(count) } else { None });

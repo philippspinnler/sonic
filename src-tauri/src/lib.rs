@@ -91,6 +91,8 @@ pub fn run() {
             commands::get_settings,
             commands::set_settings,
             commands::check_claude,
+            commands::reveal_in_finder,
+            commands::copy_text,
             commands::set_badge
         ])
         .build(tauri::generate_context!())

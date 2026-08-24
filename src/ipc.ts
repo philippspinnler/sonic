@@ -48,6 +48,8 @@ export const getSettings = () => invoke<AppSettings>("get_settings");
 export const setSettings = (settings: AppSettings) => invoke<void>("set_settings", { settings });
 export const checkClaude = () => invoke<string | null>("check_claude");
 export const setBadge = (count: number) => invoke<void>("set_badge", { count });
+export const revealInFinder = (path: string) => invoke<void>("reveal_in_finder", { path });
+export const copyText = (text: string) => invoke<void>("copy_text", { text });
 
 export const onSessionsChanged = (fn: (s: SessionView[]) => void) =>
   listen<SessionView[]>("sessions-changed", e => fn(e.payload));
