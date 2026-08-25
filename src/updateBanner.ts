@@ -1,4 +1,6 @@
 import * as ipc from "./ipc";
+import { getState } from "./store";
+import { ask } from "@tauri-apps/plugin-dialog";
 import type { UpdateInfo } from "./ipc";
 
 export interface BannerRow {
@@ -27,6 +29,14 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 let el: HTMLElement | null = null;
 
 async function act(row: BannerRow, btn: HTMLButtonElement, err: HTMLElement): Promise<void> {
+  const working = getState().sessions.filter(s => s.status === "working").length;
+  if (working > 0) {
+    const yes = await ask(
+      `${working} session(s) are still working. Restart anyway? (They will be resumed after the restart.)`,
+      { title: "Restart Sonic" },
+    );
+    if (!yes) return;
+  }
   btn.disabled = true;
   err.textContent = "";
   try {
@@ -39,7 +49,7 @@ async function act(row: BannerRow, btn: HTMLButtonElement, err: HTMLElement): Pr
   } catch (e) {
     err.textContent = String(e);
     btn.disabled = false;
-    btn.textContent = row.label;
+    btn.textContent = "Retry";
   }
 }
 

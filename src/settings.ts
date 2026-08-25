@@ -48,7 +48,7 @@ async function render(box: HTMLElement): Promise<void> {
     row.innerHTML = `
       <span class="tag"></span>
       <span class="pr-dir"></span>
-      ${p.hooksOk ? "" : `<span class="warn" title="hooks not installed; status will show as unknown">⚠ status</span>`}
+      ${p.hooksOk ? "" : `<span class="warn" title="Sonic could not add its status hooks because ${p.configDir}/settings.json is not valid JSON. Fix the file, then remove and re-import the profile.">⚠ no status</span>`}
       <button class="pr-term">Terminal</button>
       <button class="pr-rename">Rename</button>
       <button class="pr-del">Delete</button>`;

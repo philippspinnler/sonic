@@ -29,13 +29,24 @@ impl Default for AppSettings {
     fn default() -> Self { Self { claude_bin: None, notifications: true, font_size: default_font_size() } }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AppState {
+    /// schema version of this file; bump when a migration is needed
+    #[serde(default = "state_version")] pub version: u32,
     #[serde(default)] pub sessions: Vec<SessionRecord>,
     #[serde(default)] pub recent_folders: HashMap<String, Vec<String>>,
     #[serde(default)] pub settings: AppSettings,
     /// set before a self-restart so the next launch restores all sessions without asking
     #[serde(default)] pub restore_all_on_launch: bool,
+}
+
+pub const STATE_VERSION: u32 = 1;
+fn state_version() -> u32 { STATE_VERSION }
+impl Default for AppState {
+    fn default() -> Self {
+        Self { version: STATE_VERSION, sessions: Vec::new(), recent_folders: HashMap::new(),
+               settings: AppSettings::default(), restore_all_on_launch: false }
+    }
 }
 
 fn state_path(base: &Path) -> PathBuf { base.join("state.json") }
@@ -111,6 +122,16 @@ mod tests {
         assert_eq!(l.len(), MAX_RECENT);
         assert_eq!(l[0], "/f5");
         assert_eq!(l.iter().filter(|f| *f == "/f5").count(), 1);
+    }
+
+    #[test]
+    fn legacy_file_without_version_loads_as_current() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("state.json"), r#"{"sessions":[],"settings":{"notifications":false}}"#).unwrap();
+        let s = load(d.path());
+        assert_eq!(s.version, STATE_VERSION);
+        assert!(!s.settings.notifications);
+        assert_eq!(s.settings.font_size, 13);
     }
 
     #[test]

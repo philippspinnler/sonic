@@ -69,7 +69,11 @@ function createRow(id: string): HTMLElement {
 function updateRow(row: HTMLElement, s: SessionView, selected: boolean): void {
   row.className =
     "session-row" + (selected ? " selected" : "") + (s.status === "waiting" ? " waiting" : "");
-  row.querySelector<HTMLElement>(".dot")!.className = `dot ${s.status}`;
+  const dot = row.querySelector<HTMLElement>(".dot")!;
+  dot.className = `dot ${s.status}`;
+  dot.title = s.status === "unknown"
+    ? "Status unknown: Sonic's hooks are not installed for this profile (its settings.json could not be parsed). See Settings."
+    : s.status;
   const nameEl = row.querySelector<HTMLElement>(".row-name");
   if (nameEl && nameEl.textContent !== s.name) nameEl.textContent = s.name; // absent while renaming
   const tag = row.querySelector<HTMLElement>(".tag")!;
