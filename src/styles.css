@@ -28,6 +28,10 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 .session-row .dot { margin-top: 5px; } /* centers on the name line, not the whole row */
 .session-row:hover { background: #1f2335; }
 .session-row.selected { background: #292e42; }
+.session-row.dragging { position: relative; z-index: 10; opacity: 0.85; background: #292e42; box-shadow: 0 4px 12px #0008; pointer-events: none; }
+.drop-placeholder { margin: 0 8px; border-radius: 6px; background: #1f2335; box-shadow: inset 0 0 0 1px var(--accent); }
+body.sorting { cursor: grabbing; user-select: none; }
+body.sorting .session-row { transition: none; }
 .session-row.waiting { box-shadow: inset 2px 0 0 var(--waiting); }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--dim); }
 .dot.working { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }

@@ -233,6 +233,25 @@ pub fn rename_session(app: AppHandle, ctx: State<AppCtx>, id: String, name: Stri
     emit_sessions(&app);
 }
 
+/// Reorder sessions to match `ids`; ids that are unknown are ignored and
+/// sessions not mentioned keep their relative order at the end.
+#[tauri::command]
+pub fn reorder_sessions(app: AppHandle, ctx: State<AppCtx>, ids: Vec<String>) {
+    let mut state = ctx.state.lock().unwrap();
+    let mut rest = std::mem::take(&mut state.sessions);
+    let mut ordered = Vec::with_capacity(rest.len());
+    for id in &ids {
+        if let Some(i) = rest.iter().position(|r| &r.id == id) {
+            ordered.push(rest.remove(i));
+        }
+    }
+    ordered.extend(rest);
+    state.sessions = ordered;
+    let _ = state_store::save(&ctx.base, &state);
+    drop(state);
+    emit_sessions(&app);
+}
+
 #[tauri::command]
 pub fn close_session(app: AppHandle, ctx: State<AppCtx>, id: String) {
     if let Some(mut p) = ctx.procs.lock().unwrap().remove(&id) {

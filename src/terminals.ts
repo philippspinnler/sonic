@@ -135,10 +135,19 @@ searchInput.addEventListener("keydown", e => {
 // webview and paste the paths into the active session like a terminal would.
 // Claude Code picks image paths up from the prompt and attaches them.
 const mainEl = document.getElementById("main")!;
+// Drop positions arrive in physical pixels; DOM rects are in CSS pixels.
+function overMain(pos: { x: number; y: number }): boolean {
+  const r = mainEl.getBoundingClientRect();
+  const x = pos.x / window.devicePixelRatio;
+  const y = pos.y / window.devicePixelRatio;
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
 void getCurrentWebview().onDragDropEvent(ev => {
   const kind = ev.payload.type;
-  mainEl.classList.toggle("drop-target", kind === "enter" || kind === "over");
-  if (kind !== "drop" || !activeId) return;
+  const hovering = (kind === "enter" || kind === "over") && overMain(ev.payload.position);
+  mainEl.classList.toggle("drop-target", hovering);
+  if (kind !== "drop" || !activeId || !overMain(ev.payload.position)) return;
   const text = formatDroppedPaths(ev.payload.paths);
   if (!text) return;
   void writeStdin(activeId, b64encode(text));

@@ -89,6 +89,7 @@ pub fn run() {
             commands::write_stdin,
             commands::resize_session,
             commands::rename_session,
+            commands::reorder_sessions,
             commands::close_session,
             commands::recent_folders,
             commands::previous_sessions,

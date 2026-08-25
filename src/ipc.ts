@@ -40,6 +40,7 @@ export const startSession = (profileId: string, cwd: string, resumeId?: string |
 export const writeStdin = (id: string, dataB64: string) => invoke<void>("write_stdin", { id, dataB64 });
 export const resizeSession = (id: string, cols: number, rows: number) =>
   invoke<void>("resize_session", { id, cols, rows });
+export const reorderSessions = (ids: string[]) => invoke<void>("reorder_sessions", { ids });
 export const renameSession = (id: string, name: string) => invoke<void>("rename_session", { id, name });
 export const closeSession = (id: string) => invoke<void>("close_session", { id });
 export const recentFolders = (profileId: string) => invoke<string[]>("recent_folders", { profileId });

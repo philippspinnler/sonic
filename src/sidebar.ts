@@ -1,5 +1,6 @@
 import { getState, select, subscribe, formatElapsed, SessionView } from "./store";
-import { renameSession, revealInFinder, copyText, startSession, closeSession } from "./ipc";
+import { renameSession, reorderSessions, revealInFinder, copyText, startSession, closeSession } from "./ipc";
+import { moveItem, dropIndex } from "./sortable";
 import { showContextMenu } from "./contextMenu";
 import { closeSessionWithConfirm, shortenHome } from "./actions";
 import { initUpdateBanner } from "./updateBanner";
@@ -51,7 +52,12 @@ function createRow(id: string): HTMLElement {
       <span class="row-meta"><span class="branch"></span><span class="elapsed"></span></span>
     </span>`;
   row.addEventListener("click", () => {
+    if (dragged) return; // a completed drag is not a click
     if (getState().selectedId !== id) select(id);
+  });
+  row.addEventListener("mousedown", e => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("input, .restart")) return;
+    beginDrag(row, id, e.clientY);
   });
   row.querySelector(".row-name")!.addEventListener("dblclick", e => {
     e.stopPropagation();
@@ -120,7 +126,7 @@ export function renderSidebar(): void {
     }
     updateRow(row, s, s.id === selectedId);
     // only move nodes whose position actually changed (moving blurs inputs)
-    if (list.children[i] !== row) list.insertBefore(row, list.children[i] ?? null);
+    if (!sorting && list.children[i] !== row) list.insertBefore(row, list.children[i] ?? null);
   });
   for (const [id, row] of rows) {
     if (!seen.has(id)) {
@@ -128,6 +134,58 @@ export function renderSidebar(): void {
       rows.delete(id);
     }
   }
+}
+
+// ---- drag-to-reorder (pointer based: the webview's native DnD is taken by
+// Tauri for file drops, so the HTML5 drag API never fires in-page) ----
+const DRAG_THRESHOLD = 5;
+let dragged = false;
+let sorting = false; // renderSidebar must not move nodes while a drag is in flight
+
+function beginDrag(row: HTMLElement, id: string, startY: number): void {
+  const list = ensureShell();
+  let placeholder: HTMLElement | null = null;
+  let target = -1;
+  const from = getState().sessions.findIndex(s => s.id === id);
+
+  const onMove = (e: MouseEvent): void => {
+    const dy = e.clientY - startY;
+    if (!placeholder) {
+      if (Math.abs(dy) < DRAG_THRESHOLD) return;
+      dragged = true;
+      placeholder = document.createElement("div");
+      placeholder.className = "drop-placeholder";
+      placeholder.style.height = `${row.offsetHeight}px`;
+      row.classList.add("dragging");
+      row.style.width = `${row.offsetWidth}px`;
+      list.insertBefore(placeholder, row);
+      document.body.classList.add("sorting");
+      sorting = true;
+    }
+    row.style.transform = `translateY(${dy}px)`;
+    const others = [...list.querySelectorAll<HTMLElement>(".session-row:not(.dragging)")];
+    const centers = others.map(r => { const b = r.getBoundingClientRect(); return b.top + b.height / 2; });
+    target = dropIndex(centers, e.clientY);
+    list.insertBefore(placeholder, others[target] ?? null);
+  };
+  const onUp = (): void => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    if (!placeholder) return;
+    placeholder.remove();
+    row.classList.remove("dragging");
+    row.style.transform = "";
+    row.style.width = "";
+    document.body.classList.remove("sorting");
+    sorting = false;
+    const ids = getState().sessions.map(s => s.id);
+    const next = moveItem(ids, from, target);
+    if (next.some((v, i) => v !== ids[i])) void reorderSessions(next);
+    // let the click that follows mouseup see `dragged`, then reset
+    setTimeout(() => { dragged = false; }, 0);
+  };
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
 }
 
 function contextItems(row: HTMLElement, s: SessionView) {
