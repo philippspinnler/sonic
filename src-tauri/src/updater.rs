@@ -63,13 +63,18 @@ fn zsh(cmd: &str) -> std::io::Result<std::process::Output> {
     std::process::Command::new("/bin/zsh").args(["-lc", cmd]).output()
 }
 
+/// stdout of a brew command, if it produced any. NOTE: `brew outdated`
+/// exits 1 when something *is* outdated, so the exit code must not be
+/// used to decide whether the output is valid - the parser does that.
+fn brew_stdout(cmd: &str) -> Option<String> {
+    let out = zsh(cmd).ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
 pub fn check(running_bins: &[PathBuf], claude_bin: &str) -> UpdateInfo {
-    let outdated = zsh(&format!("brew outdated --cask {CASK} --json")).ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
-    let installed = zsh(&format!("brew list --cask --versions {CASK}")).ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+    let outdated = brew_stdout(&format!("brew outdated --cask {CASK} --json"));
+    let installed = brew_stdout(&format!("brew list --cask --versions {CASK}"));
     let current = resolve_bin(claude_bin);
     compute(outdated.as_deref(), installed.as_deref(), running_bins, current.as_deref())
 }
@@ -78,9 +83,8 @@ pub fn check(running_bins: &[PathBuf], claude_bin: &str) -> UpdateInfo {
 pub fn check_sonic() -> Option<String> {
     // the tap is a local git clone that `brew outdated` never refreshes on its own
     let _ = zsh("brew update --quiet");
-    let out = zsh(&format!("brew outdated --cask {SONIC_CASK} --json")).ok()
-        .filter(|o| o.status.success())?;
-    parse_brew_outdated_for(&String::from_utf8_lossy(&out.stdout), SONIC_CASK).map(|(_, l)| l)
+    let out = brew_stdout(&format!("brew outdated --cask {SONIC_CASK} --json"))?;
+    parse_brew_outdated_for(&out, SONIC_CASK).map(|(_, l)| l)
 }
 
 pub fn upgrade() -> Result<(), String> {
@@ -143,6 +147,21 @@ mod tests {
         let info = compute(Some(r#"{"casks":[]}"#), Some("claude-code@latest 2.1.250"), &[old], Some(&new));
         assert!(!info.needs_upgrade && info.needs_restart);
         assert_eq!(info.installed.as_deref(), Some("2.1.250"));
+    }
+
+    #[test]
+    fn brew_stdout_keeps_output_when_exit_code_is_1() {
+        // `brew outdated` exits 1 when there are outdated casks
+        let out = brew_stdout("echo '{\"casks\":[]}'; exit 1").unwrap();
+        assert_eq!(out, r#"{"casks":[]}"#);
+        assert_eq!(brew_stdout("exit 1"), None);
+    }
+
+    #[test]
+    #[ignore] // hits the real Homebrew install; run with `cargo test -- --ignored`
+    fn real_brew_sonic_check_runs() {
+        let latest = check_sonic();
+        eprintln!("check_sonic() => {latest:?}");
     }
 
     #[test]
