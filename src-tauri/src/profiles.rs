@@ -47,7 +47,21 @@ impl ProfileRegistry {
                 Vec::new()
             }),
         };
-        Self { profiles, base: base.to_path_buf() }
+        let mut reg = Self { profiles, base: base.to_path_buf() };
+        reg.refresh_hooks();
+        reg
+    }
+
+    /// Re-run the hook installer for every profile so upgrades that change
+    /// the hook command (or a rewritten hook.sh) reach existing profiles.
+    fn refresh_hooks(&mut self) {
+        let Ok(script) = hooks::write_hook_script(&self.base) else { return };
+        let mut changed = false;
+        for p in &mut self.profiles {
+            let ok = hooks::install_hooks(&p.config_dir, &script).is_ok();
+            if ok != p.hooks_ok { p.hooks_ok = ok; changed = true; }
+        }
+        if changed { let _ = self.persist(); }
     }
 
     fn persist(&self) -> io::Result<()> {
@@ -114,6 +128,23 @@ impl ProfileRegistry {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn load_repairs_hooks_of_existing_profiles() {
+        let base = tempdir().unwrap();
+        let cfg = tempdir().unwrap();
+        let mut reg = ProfileRegistry::load(base.path());
+        reg.import("old", cfg.path()).unwrap();
+        // simulate a settings.json written by an older Sonic (unquoted path)
+        let script = base.path().join("hook.sh").to_string_lossy().to_string();
+        std::fs::write(cfg.path().join("settings.json"),
+            format!(r#"{{"hooks":{{"Stop":[{{"hooks":[{{"type":"command","command":"{script} idle"}}]}}]}}}}"#)).unwrap();
+        let _ = ProfileRegistry::load(base.path());
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(cfg.path().join("settings.json")).unwrap()).unwrap();
+        assert_eq!(v["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap(), format!("'{script}' idle"));
+        assert!(v["hooks"]["UserPromptSubmit"].is_array());
+    }
 
     #[test]
     fn slugify_basic() {

@@ -42,20 +42,27 @@ pub fn install_hooks(config_dir: &Path, script: &Path) -> Result<(), HookError> 
     let obj = root.as_object_mut().ok_or(HookError::Malformed)?;
     let hooks = obj.entry("hooks").or_insert_with(|| serde_json::json!({}));
     let hooks = hooks.as_object_mut().ok_or(HookError::Malformed)?;
-    let script_str = script.to_string_lossy();
+    // Claude Code runs hook commands through a shell, so the path must be
+    // quoted - the default data dir lives under "Application Support".
+    let quoted = format!("'{}'", script.to_string_lossy().replace('\'', r"'\''"));
     let mut changed = false;
     for (event, state) in HOOK_EVENTS {
         let arr = hooks.entry(event).or_insert_with(|| serde_json::json!([]));
         let arr = arr.as_array_mut().ok_or(HookError::Malformed)?;
-        let ours = arr.iter().any(|entry| {
-            entry["hooks"].as_array().is_some_and(|hs| hs.iter().any(|h|
-                h["command"].as_str().is_some_and(|c| c.contains("hook.sh"))))
+        let want = format!("{quoted} {state}");
+        let ours = arr.iter_mut().find_map(|entry| {
+            entry["hooks"].as_array_mut()?.iter_mut().find(|h|
+                h["command"].as_str().is_some_and(|c| c.contains("hook.sh")))
         });
-        if !ours {
-            arr.push(serde_json::json!({
-                "hooks": [{ "type": "command", "command": format!("{script_str} {state}") }]
-            }));
-            changed = true;
+        match ours {
+            Some(h) if h["command"].as_str() == Some(want.as_str()) => {}
+            Some(h) => { h["command"] = serde_json::Value::String(want); changed = true; }
+            None => {
+                arr.push(serde_json::json!({
+                    "hooks": [{ "type": "command", "command": want }]
+                }));
+                changed = true;
+            }
         }
     }
     if changed {
@@ -97,7 +104,7 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(d.path().join("settings.json")).unwrap()).unwrap();
         for (event, state) in HOOK_EVENTS {
             let cmd = v["hooks"][event][0]["hooks"][0]["command"].as_str().unwrap();
-            assert_eq!(cmd, format!("/data/hook.sh {state}"));
+            assert_eq!(cmd, format!("'/data/hook.sh' {state}"));
         }
         assert!(!d.path().join("settings.json.sonic-backup").exists());
     }
@@ -114,6 +121,26 @@ mod tests {
         let stop = v["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2);
         assert_eq!(std::fs::read_to_string(d.path().join("settings.json.sonic-backup")).unwrap(), orig);
+    }
+
+    #[test]
+    fn script_path_with_space_is_quoted_and_old_entry_repaired() {
+        let d = tempdir().unwrap();
+        let script = std::path::Path::new("/Users/x/Library/Application Support/sonic/hook.sh");
+        std::fs::write(d.path().join("settings.json"),
+            r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/Users/x/Library/Application Support/sonic/hook.sh idle"}]}]}}"#).unwrap();
+        install_hooks(d.path(), script).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(d.path().join("settings.json")).unwrap()).unwrap();
+        let stop = v["hooks"]["Stop"].as_array().unwrap();
+        assert_eq!(stop.len(), 1);
+        let cmd = stop[0]["hooks"][0]["command"].as_str().unwrap();
+        assert_eq!(cmd, "'/Users/x/Library/Application Support/sonic/hook.sh' idle");
+        // the command must survive being run through a shell
+        let out = std::process::Command::new("/bin/sh").arg("-c")
+            .arg(cmd.replace("/Users/x/Library/Application Support/sonic/hook.sh", "/bin/echo"))
+            .output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "idle");
     }
 
     #[test]
