@@ -1,4 +1,4 @@
-import { getState, select, subscribe, SessionView } from "./store";
+import { getState, select, subscribe, formatElapsed, SessionView } from "./store";
 import { renameSession, revealInFinder, copyText, startSession, closeSession } from "./ipc";
 import { showContextMenu } from "./contextMenu";
 import { closeSessionWithConfirm, shortenHome } from "./actions";
@@ -48,6 +48,7 @@ function createRow(id: string): HTMLElement {
         <span class="tag"></span>
       </span>
       <span class="folder"><bdi></bdi></span>
+      <span class="row-meta"><span class="branch"></span><span class="elapsed"></span></span>
     </span>`;
   row.addEventListener("click", () => {
     if (getState().selectedId !== id) select(id);
@@ -78,6 +79,11 @@ function updateRow(row: HTMLElement, s: SessionView, selected: boolean): void {
   const folder = row.querySelector<HTMLElement>(".folder")!;
   folder.querySelector("bdi")!.textContent = shortenHome(s.cwd);
   folder.title = s.cwd;
+  const branch = row.querySelector<HTMLElement>(".branch")!;
+  branch.textContent = s.branch ? `⎇ ${s.branch}` : "";
+  const elapsed = row.querySelector<HTMLElement>(".elapsed")!;
+  elapsed.textContent = formatElapsed(s.workingSince, Date.now()) ?? "";
+  row.querySelector<HTMLElement>(".row-meta")!.hidden = !s.branch && !elapsed.textContent;
 
   const existing = row.querySelector<HTMLElement>(".restart");
   if (s.status === "exited" && !existing) {
@@ -158,3 +164,8 @@ function startRename(row: HTMLElement, id: string): void {
 }
 
 subscribe(renderSidebar);
+
+// keep the elapsed-time labels moving
+setInterval(() => {
+  if (getState().sessions.some(s => s.workingSince !== undefined)) renderSidebar();
+}, 30_000);

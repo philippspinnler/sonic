@@ -51,6 +51,7 @@ async function boot(): Promise<void> {
   initEmptyState();
   await refresh();
   renderSidebar();
+  setInterval(() => void refresh(), 30_000); // picks up branch switches
 
   const bin = await ipc.checkClaude();
   if (!bin) {

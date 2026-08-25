@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod git;
 pub mod hooks;
 pub mod profiles;
 pub mod sessions;

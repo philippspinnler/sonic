@@ -33,6 +33,7 @@ pub struct SessionView {
     pub profile_color: String,
     pub cwd: String,
     pub status: String,
+    pub branch: Option<String>,
 }
 
 fn views(ctx: &AppCtx) -> Vec<SessionView> {
@@ -52,6 +53,7 @@ fn views(ctx: &AppCtx) -> Vec<SessionView> {
                 profile_color: p.as_ref().map(|p| p.color.clone()).unwrap_or("#565f89".into()),
                 cwd: r.cwd.clone(),
                 status: statuses.get(&r.id).cloned().unwrap_or("idle".into()),
+                branch: crate::git::branch(std::path::Path::new(&r.cwd)),
             }
         })
         .collect()

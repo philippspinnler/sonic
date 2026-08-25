@@ -22,6 +22,8 @@ body { background: var(--bg2); color: var(--fg); font: 13px -apple-system, sans-
 .term-pane .xterm { padding: 6px; }
 
 .session-list { flex: 1; padding: 8px 0; }
+.row-meta { display: flex; gap: 8px; font-size: 11px; color: var(--dim); }
+.row-meta .elapsed { color: var(--accent); }
 .session-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 12px; cursor: pointer; }
 .session-row .dot { margin-top: 5px; } /* centers on the name line, not the whole row */
 .session-row:hover { background: #1f2335; }

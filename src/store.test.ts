@@ -1,8 +1,8 @@
 import { describe, expect, test, beforeEach } from "vitest";
-import { getState, setSessions, setStatus, select, waitingCount, _reset, SessionView } from "./store";
+import { getState, setSessions, setStatus, select, waitingCount, formatElapsed, _reset, SessionView } from "./store";
 
 const sv = (id: string, status = "idle"): SessionView => ({
-  id, name: id, profileId: "p", profileName: "P", profileColor: "#fff", cwd: "/x", status: status as SessionView["status"],
+  id, name: id, profileId: "p", profileName: "P", profileColor: "#fff", cwd: "/x", status: status as SessionView["status"], branch: null,
 });
 
 beforeEach(() => _reset());
@@ -38,5 +38,24 @@ describe("store", () => {
     setSessions([sv("a")]);
     setSessions([]);
     expect(getState().selectedId).toBeNull();
+  });
+
+  test("workingSince starts on transition to working and survives refreshes", () => {
+    setSessions([sv("a")], 1000);
+    setStatus("a", "working", 5000);
+    expect(getState().sessions[0].workingSince).toBe(5000);
+    setSessions([sv("a", "working")], 9000);
+    expect(getState().sessions[0].workingSince).toBe(5000);
+    setStatus("a", "idle", 12000);
+    expect(getState().sessions[0].workingSince).toBeUndefined();
+  });
+});
+
+describe("formatElapsed", () => {
+  test("formats minutes and hours", () => {
+    expect(formatElapsed(undefined, 0)).toBeNull();
+    expect(formatElapsed(0, 30_000)).toBe("<1m");
+    expect(formatElapsed(0, 3 * 60_000)).toBe("3m");
+    expect(formatElapsed(0, 65 * 60_000)).toBe("1h 05m");
   });
 });
