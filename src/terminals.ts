@@ -1,7 +1,9 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { writeStdin, resizeSession } from "./ipc";
+import { formatDroppedPaths } from "./dropPaths";
 
 interface Pane {
   term: Terminal;
@@ -76,6 +78,20 @@ export function disposeTerminal(id: string): void {
   panes.delete(id);
   if (activeId === id) activeId = null;
 }
+
+// Tauri intercepts OS file drops before the DOM sees them, so listen on the
+// webview and paste the paths into the active session like a terminal would.
+// Claude Code picks image paths up from the prompt and attaches them.
+const mainEl = document.getElementById("main")!;
+void getCurrentWebview().onDragDropEvent(ev => {
+  const kind = ev.payload.type;
+  mainEl.classList.toggle("drop-target", kind === "enter" || kind === "over");
+  if (kind !== "drop" || !activeId) return;
+  const text = formatDroppedPaths(ev.payload.paths);
+  if (!text) return;
+  void writeStdin(activeId, b64encode(text));
+  panes.get(activeId)?.term.focus();
+});
 
 window.addEventListener("resize", () => {
   if (activeId) panes.get(activeId)?.fit.fit();
