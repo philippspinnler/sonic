@@ -76,6 +76,8 @@ pub fn check(running_bins: &[PathBuf], claude_bin: &str) -> UpdateInfo {
 
 /// Newer Sonic version available via the `sonic` cask, if any.
 pub fn check_sonic() -> Option<String> {
+    // the tap is a local git clone that `brew outdated` never refreshes on its own
+    let _ = zsh("brew update --quiet");
     let out = zsh(&format!("brew outdated --cask {SONIC_CASK} --json")).ok()
         .filter(|o| o.status.success())?;
     parse_brew_outdated_for(&String::from_utf8_lossy(&out.stdout), SONIC_CASK).map(|(_, l)| l)
