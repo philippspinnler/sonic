@@ -15,6 +15,10 @@ function ensureShell(): HTMLElement {
   list = document.createElement("div");
   list.className = "session-list";
   el.appendChild(list);
+  const version = document.createElement("div");
+  version.className = "sidebar-version";
+  version.textContent = `Sonic ${__APP_VERSION__}`;
+  el.appendChild(version);
   const footer = document.createElement("div");
   footer.className = "sidebar-footer";
   footer.innerHTML = `<button id="btn-new">＋ New session</button><button id="btn-settings">⚙</button>`;
