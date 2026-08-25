@@ -340,6 +340,16 @@ pub async fn check_claude_update(app: AppHandle) -> updater::UpdateInfo {
 }
 
 #[tauri::command]
+pub async fn check_sonic_update() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(updater::check_sonic).await.ok().flatten()
+}
+
+#[tauri::command]
+pub async fn update_sonic() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(updater::upgrade_sonic).await.map_err(err)?
+}
+
+#[tauri::command]
 pub async fn update_claude() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(updater::upgrade).await.map_err(err)?
 }

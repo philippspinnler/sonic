@@ -1,59 +1,69 @@
 import * as ipc from "./ipc";
 import type { UpdateInfo } from "./ipc";
 
-export interface BannerView {
+export interface BannerRow {
   text: string;
-  button: "update" | "restart";
+  label: string;
+  /** what to run before restarting */
+  action: "update-sonic" | "update-claude" | null;
 }
 
-// What the sidebar banner should say for a given update check, or null to hide it.
-export function bannerView(info: UpdateInfo): BannerView | null {
-  if (info.needsUpgrade) {
-    return { text: `Claude Code ${info.latest} available`, button: "update" };
+// Rows the sidebar banner should show; empty means hide it.
+export function bannerRows(claude: UpdateInfo, sonicLatest: string | null): BannerRow[] {
+  const rows: BannerRow[] = [];
+  if (sonicLatest) {
+    rows.push({ text: `Sonic ${sonicLatest} available`, label: "Update & restart", action: "update-sonic" });
   }
-  if (info.needsRestart) {
-    const v = info.installed ? `Claude Code ${info.installed} installed` : "Claude Code updated";
-    return { text: `${v} — restart to use it`, button: "restart" };
+  if (claude.needsUpgrade) {
+    rows.push({ text: `Claude Code ${claude.latest} available`, label: "Update & restart", action: "update-claude" });
+  } else if (claude.needsRestart) {
+    const v = claude.installed ? `Claude Code ${claude.installed} installed` : "Claude Code updated";
+    rows.push({ text: `${v} — restart to use it`, label: "Restart", action: null });
   }
-  return null;
+  return rows;
 }
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 let el: HTMLElement | null = null;
 
-async function act(view: BannerView, btn: HTMLButtonElement, err: HTMLElement): Promise<void> {
+async function act(row: BannerRow, btn: HTMLButtonElement, err: HTMLElement): Promise<void> {
   btn.disabled = true;
   err.textContent = "";
   try {
-    if (view.button === "update") {
+    if (row.action) {
       btn.textContent = "Updating…";
-      await ipc.updateClaude();
+      await (row.action === "update-sonic" ? ipc.updateSonic() : ipc.updateClaude());
     }
     btn.textContent = "Restarting…";
     await ipc.restartWithSessions();
   } catch (e) {
     err.textContent = String(e);
     btn.disabled = false;
-    btn.textContent = view.button === "update" ? "Update & restart" : "Restart";
+    btn.textContent = row.label;
   }
 }
 
-export function renderUpdateBanner(info: UpdateInfo): void {
+export function renderUpdateBanner(rows: BannerRow[]): void {
   if (!el) return;
-  const view = bannerView(info);
-  el.hidden = !view;
-  if (!view) return;
-  el.innerHTML = `<div class="text"></div><button></button><div class="err"></div>`;
-  el.querySelector(".text")!.textContent = view.text;
-  const btn = el.querySelector("button")!;
-  btn.textContent = view.button === "update" ? "Update & restart" : "Restart";
-  const err = el.querySelector<HTMLElement>(".err")!;
-  btn.addEventListener("click", () => void act(view, btn, err));
+  el.hidden = rows.length === 0;
+  el.innerHTML = "";
+  for (const row of rows) {
+    const item = document.createElement("div");
+    item.className = "update-row";
+    item.innerHTML = `<div class="text"></div><button></button><div class="err"></div>`;
+    item.querySelector(".text")!.textContent = row.text;
+    const btn = item.querySelector("button")!;
+    btn.textContent = row.label;
+    const err = item.querySelector<HTMLElement>(".err")!;
+    btn.addEventListener("click", () => void act(row, btn, err));
+    el.appendChild(item);
+  }
 }
 
 export async function checkNow(): Promise<void> {
   try {
-    renderUpdateBanner(await ipc.checkClaudeUpdate());
+    const [claude, sonic] = await Promise.all([ipc.checkClaudeUpdate(), ipc.checkSonicUpdate()]);
+    renderUpdateBanner(bannerRows(claude, sonic));
   } catch (e) {
     console.error("update check failed", e);
   }

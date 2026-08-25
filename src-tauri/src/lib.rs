@@ -101,6 +101,8 @@ pub fn run() {
             commands::auto_restore,
             commands::check_claude_update,
             commands::update_claude,
+            commands::check_sonic_update,
+            commands::update_sonic,
             commands::restart_with_sessions
         ])
         .build(tauri::generate_context!())

@@ -57,6 +57,8 @@ export interface UpdateInfo {
 export const autoRestore = () => invoke<boolean>("auto_restore");
 export const checkClaudeUpdate = () => invoke<UpdateInfo>("check_claude_update");
 export const updateClaude = () => invoke<void>("update_claude");
+export const checkSonicUpdate = () => invoke<string | null>("check_sonic_update");
+export const updateSonic = () => invoke<void>("update_sonic");
 export const restartWithSessions = () => invoke<void>("restart_with_sessions");
 export const setBadge = (count: number) => invoke<void>("set_badge", { count });
 export const revealInFinder = (path: string) => invoke<void>("reveal_in_finder", { path });

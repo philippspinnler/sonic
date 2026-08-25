@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 pub const CASK: &str = "claude-code@latest";
+pub const SONIC_CASK: &str = "sonic";
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -15,11 +16,15 @@ pub struct UpdateInfo {
     pub needs_restart: bool,
 }
 
-/// Parse `brew outdated --cask <CASK> --json` output. Returns
+/// Parse `brew outdated --cask <cask> --json` output. Returns
 /// (installed, latest) when the cask is outdated, None otherwise.
 pub fn parse_brew_outdated(json: &str) -> Option<(String, String)> {
+    parse_brew_outdated_for(json, CASK)
+}
+
+pub fn parse_brew_outdated_for(json: &str, cask: &str) -> Option<(String, String)> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
-    let cask = v["casks"].as_array()?.iter().find(|c| c["name"].as_str() == Some(CASK))?;
+    let cask = v["casks"].as_array()?.iter().find(|c| c["name"].as_str() == Some(cask))?;
     let installed = cask["installed_versions"].as_array()?.first()?.as_str()?.to_string();
     let latest = cask["current_version"].as_str()?.to_string();
     Some((installed, latest))
@@ -69,8 +74,23 @@ pub fn check(running_bins: &[PathBuf], claude_bin: &str) -> UpdateInfo {
     compute(outdated.as_deref(), installed.as_deref(), running_bins, current.as_deref())
 }
 
+/// Newer Sonic version available via the `sonic` cask, if any.
+pub fn check_sonic() -> Option<String> {
+    let out = zsh(&format!("brew outdated --cask {SONIC_CASK} --json")).ok()
+        .filter(|o| o.status.success())?;
+    parse_brew_outdated_for(&String::from_utf8_lossy(&out.stdout), SONIC_CASK).map(|(_, l)| l)
+}
+
 pub fn upgrade() -> Result<(), String> {
-    let out = zsh(&format!("brew upgrade --cask {CASK}")).map_err(|e| e.to_string())?;
+    upgrade_cask(CASK)
+}
+
+pub fn upgrade_sonic() -> Result<(), String> {
+    upgrade_cask(SONIC_CASK)
+}
+
+fn upgrade_cask(cask: &str) -> Result<(), String> {
+    let out = zsh(&format!("brew upgrade --cask {cask}")).map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {
@@ -90,6 +110,14 @@ mod tests {
         assert_eq!(parse_brew_outdated(OUTDATED), Some(("2.1.245".into(), "2.1.250".into())));
         assert_eq!(parse_brew_outdated(r#"{"formulae":[],"casks":[]}"#), None);
         assert_eq!(parse_brew_outdated("nope"), None);
+    }
+
+    #[test]
+    fn parses_outdated_sonic_cask() {
+        let j = r#"{"formulae":[],"casks":[{"name":"sonic","installed_versions":["0.1.3"],"current_version":"0.1.4"}]}"#;
+        assert_eq!(parse_brew_outdated_for(j, SONIC_CASK), Some(("0.1.3".into(), "0.1.4".into())));
+        assert_eq!(parse_brew_outdated_for(j, CASK), None);
+        assert_eq!(parse_brew_outdated_for(r#"{"casks":[]}"#, SONIC_CASK), None);
     }
 
     #[test]

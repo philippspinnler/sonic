@@ -61,12 +61,13 @@ body.resizing #main { pointer-events: none; }
 .empty-profiles button { background: transparent; cursor: pointer; font-size: 13px; padding: 5px 12px; border-radius: 6px; }
 .empty-profiles button:not(.tag) { background: #292e42; color: var(--fg); border: 0; }
 .empty-profiles button.tag:hover { background: #1f2335; }
-.update-banner { margin: 6px 8px; padding: 8px 10px; background: #2b2a1f; border: 1px solid #4a4020; border-radius: 6px; font-size: 12px; }
-.update-banner .text { color: var(--waiting); margin-bottom: 6px; }
-.update-banner button { width: 100%; background: #292e42; color: var(--fg); border: 0; border-radius: 6px; padding: 5px; cursor: pointer; }
-.update-banner button:disabled { opacity: 0.6; cursor: default; }
-.update-banner .err { color: var(--exited); margin-top: 4px; white-space: pre-wrap; user-select: text; }
-.update-banner .err:empty { display: none; }
+.update-banner { margin: 6px 8px; display: flex; flex-direction: column; gap: 6px; }
+.update-row { padding: 8px 10px; background: #2b2a1f; border: 1px solid #4a4020; border-radius: 6px; font-size: 12px; }
+.update-row .text { color: var(--waiting); margin-bottom: 6px; }
+.update-row button { width: 100%; background: #292e42; color: var(--fg); border: 0; border-radius: 6px; padding: 5px; cursor: pointer; }
+.update-row button:disabled { opacity: 0.6; cursor: default; }
+.update-row .err { color: var(--exited); margin-top: 4px; white-space: pre-wrap; user-select: text; }
+.update-row .err:empty { display: none; }
 .sidebar-version { padding: 0 12px 6px; font-size: 11px; color: var(--dim); }
 .sidebar-footer { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #1f2335; }
 .sidebar-footer button { flex: 1; background: #292e42; color: var(--fg); border: 0; border-radius: 6px; padding: 6px; cursor: pointer; }
