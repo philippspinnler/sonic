@@ -9,9 +9,20 @@ pub struct StatusEvent {
 
 pub fn parse_status_event(bytes: &[u8]) -> Option<StatusEvent> {
     let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let mut state = v["state"].as_str()?.to_string();
+    if state == "waiting" {
+        // The Notification hook also fires for things that are not a request
+        // for input: "idle_prompt" comes ~60s after Claude finished (it is
+        // idle, not waiting), "auth_success" is informational.
+        match v["hook"]["notification_type"].as_str() {
+            Some("idle_prompt") => state = "idle".into(),
+            Some("auth_success") => return None,
+            _ => {}
+        }
+    }
     Some(StatusEvent {
         sonic_session: v["sonic_session"].as_str()?.to_string(),
-        state: v["state"].as_str()?.to_string(),
+        state,
         claude_session_id: v["hook"]["session_id"].as_str().map(str::to_string),
     })
 }
@@ -54,6 +65,19 @@ mod tests {
         assert_eq!(ev.sonic_session, "s1");
         assert_eq!(ev.state, "working");
         assert_eq!(ev.claude_session_id.as_deref(), Some("cc-42"));
+    }
+
+    #[test]
+    fn notification_types_are_mapped() {
+        let ev = |t: &str| parse_status_event(
+            format!(r#"{{"sonic_session":"s","state":"waiting","hook":{{"notification_type":"{t}"}}}}"#).as_bytes());
+        assert_eq!(ev("permission_prompt").unwrap().state, "waiting");
+        assert_eq!(ev("elicitation_dialog").unwrap().state, "waiting");
+        assert_eq!(ev("idle_prompt").unwrap().state, "idle");
+        assert!(ev("auth_success").is_none());
+        // no type at all (older claude) keeps the old behaviour
+        let plain = parse_status_event(br#"{"sonic_session":"s","state":"waiting","hook":{}}"#).unwrap();
+        assert_eq!(plain.state, "waiting");
     }
 
     #[test]
