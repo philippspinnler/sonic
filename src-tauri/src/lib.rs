@@ -97,6 +97,7 @@ pub fn run() {
             commands::check_claude,
             commands::reveal_in_finder,
             commands::copy_text,
+            commands::open_url,
             commands::set_badge,
             commands::auto_restore,
             commands::check_claude_update,

@@ -37,6 +37,7 @@ async function render(box: HTMLElement): Promise<void> {
     <label class="field">claude binary
       <input id="s-bin" placeholder="auto (from login shell PATH)" />
     </label>
+    <label class="field row">Terminal font size <input id="s-font" type="number" min="9" max="24" style="width:60px" /></label>
     <label class="field row"><input type="checkbox" id="s-notif" /> Notifications when a session needs input</label>
     <div class="btn-row"><button id="s-close">Close</button></div>`;
 
@@ -106,12 +107,19 @@ async function render(box: HTMLElement): Promise<void> {
   bin.value = settings.claude_bin ?? "";
   const notif = box.querySelector<HTMLInputElement>("#s-notif")!;
   notif.checked = settings.notifications;
-  const saveApp = () =>
+  const font = box.querySelector<HTMLInputElement>("#s-font")!;
+  font.value = String(settings.font_size);
+  const saveApp = () => {
+    const font_size = Math.min(24, Math.max(9, Number(font.value) || 13));
+    window.dispatchEvent(new CustomEvent("sonic:font-size", { detail: font_size }));
     void ipc.setSettings({
       claude_bin: bin.value.trim() || null,
       notifications: notif.checked,
+      font_size,
     });
+  };
   bin.addEventListener("change", saveApp);
   notif.addEventListener("change", saveApp);
+  font.addEventListener("change", saveApp);
   box.querySelector("#s-close")!.addEventListener("click", closeSettings);
 }

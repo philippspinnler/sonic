@@ -1,6 +1,6 @@
 import { getState, setSessions, setStatus, select, subscribe } from "./store";
 import { renderSidebar } from "./sidebar";
-import { ensureTerminal, writeData, showTerminal, disposeTerminal } from "./terminals";
+import { ensureTerminal, writeData, showTerminal, disposeTerminal, openSearch, setFontSize } from "./terminals";
 import * as ipc from "./ipc";
 import type { SessionView } from "./store";
 import { openNewSessionDialog } from "./newSession";
@@ -45,6 +45,8 @@ async function boot(): Promise<void> {
     else if (id === "settings") window.dispatchEvent(new CustomEvent("sonic:settings"));
   });
   await initNotifications();
+  setFontSize((await ipc.getSettings()).font_size);
+  window.addEventListener("sonic:font-size", e => setFontSize((e as CustomEvent<number>).detail));
   initSidebarResizer();
   initEmptyState();
   await refresh();
@@ -75,6 +77,11 @@ async function boot(): Promise<void> {
 
 window.addEventListener("keydown", e => {
   if (!(e.metaKey || e.ctrlKey)) return;
+  if (e.key === "f") {
+    openSearch();
+    e.preventDefault();
+    return;
+  }
   if (/^[1-9]$/.test(e.key)) {
     const s = getState().sessions[+e.key - 1];
     if (s) {

@@ -1,18 +1,30 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { writeStdin, resizeSession } from "./ipc";
+import { writeStdin, resizeSession, openUrl } from "./ipc";
 import { formatDroppedPaths } from "./dropPaths";
 
 interface Pane {
   term: Terminal;
   fit: FitAddon;
+  search: SearchAddon;
   el: HTMLElement;
 }
 
 const panes = new Map<string, Pane>();
 let activeId: string | null = null;
+let fontSize = 13;
+
+export function setFontSize(size: number): void {
+  fontSize = size;
+  for (const pane of panes.values()) {
+    pane.term.options.fontSize = size;
+    if (pane.el.offsetHeight > 0) pane.fit.fit();
+  }
+}
 
 function b64encode(s: string): string {
   return btoa(String.fromCharCode(...new TextEncoder().encode(s)));
@@ -28,13 +40,16 @@ export function ensureTerminal(id: string): void {
   el.className = "term-pane";
   document.getElementById("terminals")!.appendChild(el);
   const term = new Terminal({
-    fontSize: 13,
+    fontSize,
     fontFamily: "Menlo, monospace",
     theme: { background: "#1a1b26", foreground: "#c0caf5" },
     scrollback: 10000,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  term.loadAddon(new WebLinksAddon((_e, uri) => void openUrl(uri)));
+  const search = new SearchAddon();
+  term.loadAddon(search);
   term.open(el);
   term.onData(data => {
     void writeStdin(id, b64encode(data));
@@ -49,7 +64,7 @@ export function ensureTerminal(id: string): void {
   });
   ro.observe(el);
   if (term.element) ro.observe(term.element);
-  panes.set(id, { term, fit, el });
+  panes.set(id, { term, fit, search, el });
 }
 
 export function writeData(id: string, dataB64: string): void {
@@ -78,6 +93,43 @@ export function disposeTerminal(id: string): void {
   panes.delete(id);
   if (activeId === id) activeId = null;
 }
+
+// ---- ⌘F search bar ----
+const searchBar = document.createElement("div");
+searchBar.className = "search-bar";
+searchBar.hidden = true;
+searchBar.innerHTML = `<input placeholder="Find (Enter next, ⇧Enter previous, Esc close)" /><span class="count"></span>`;
+document.getElementById("main")!.appendChild(searchBar);
+const searchInput = searchBar.querySelector("input")!;
+const searchOpts = { caseSensitive: false, decorations: { matchBackground: "#e0af68", matchOverviewRuler: "#e0af68", activeMatchBackground: "#ff9e64", activeMatchColorOverviewRuler: "#ff9e64" } };
+
+function activeSearch(): SearchAddon | undefined {
+  return activeId ? panes.get(activeId)?.search : undefined;
+}
+
+export function openSearch(): void {
+  if (!activeId) return;
+  searchBar.hidden = false;
+  searchInput.focus();
+  searchInput.select();
+}
+
+function closeSearch(): void {
+  searchBar.hidden = true;
+  activeSearch()?.clearDecorations();
+  if (activeId) panes.get(activeId)?.term.focus();
+}
+
+searchInput.addEventListener("input", () => {
+  activeSearch()?.findNext(searchInput.value, { ...searchOpts, incremental: true });
+});
+searchInput.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeSearch();
+  else if (e.key === "Enter" && e.shiftKey) activeSearch()?.findPrevious(searchInput.value, searchOpts);
+  else if (e.key === "Enter") activeSearch()?.findNext(searchInput.value, searchOpts);
+  else return;
+  e.preventDefault();
+});
 
 // Tauri intercepts OS file drops before the DOM sees them, so listen on the
 // webview and paste the paths into the active session like a terminal would.

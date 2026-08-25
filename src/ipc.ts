@@ -26,6 +26,7 @@ export interface SessionRecord {
 export interface AppSettings {
   claude_bin: string | null;
   notifications: boolean;
+  font_size: number;
 }
 
 export const listProfiles = () => invoke<Profile[]>("list_profiles");
@@ -45,6 +46,7 @@ export const recentFolders = (profileId: string) => invoke<string[]>("recent_fol
 export const previousSessions = () => invoke<SessionRecord[]>("previous_sessions");
 export const discardPrevious = () => invoke<void>("discard_previous");
 export const getSettings = () => invoke<AppSettings>("get_settings");
+export const openUrl = (url: string) => invoke<void>("open_url", { url });
 export const setSettings = (settings: AppSettings) => invoke<void>("set_settings", { settings });
 export const checkClaude = () => invoke<string | null>("check_claude");
 

@@ -299,6 +299,15 @@ pub fn reveal_in_finder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("only http(s) links can be opened".into());
+    }
+    std::process::Command::new("open").arg(&url).status().map_err(err)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn copy_text(text: String) -> Result<(), String> {
     use std::io::Write;
     let mut child = std::process::Command::new("pbcopy")

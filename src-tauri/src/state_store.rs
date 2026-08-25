@@ -20,10 +20,13 @@ pub struct AppSettings {
     pub claude_bin: Option<String>,
     #[serde(default = "yes")]
     pub notifications: bool,
+    #[serde(default = "default_font_size")]
+    pub font_size: u8,
 }
 fn yes() -> bool { true }
+pub fn default_font_size() -> u8 { 13 }
 impl Default for AppSettings {
-    fn default() -> Self { Self { claude_bin: None, notifications: true } }
+    fn default() -> Self { Self { claude_bin: None, notifications: true, font_size: default_font_size() } }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
