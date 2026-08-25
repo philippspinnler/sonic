@@ -4,6 +4,7 @@ pub mod profiles;
 pub mod sessions;
 pub mod state_store;
 pub mod status;
+pub mod updater;
 
 use commands::AppCtx;
 use std::{collections::HashMap, sync::Mutex};
@@ -21,6 +22,7 @@ pub fn run() {
 
             let mut state = state_store::load(&base);
             let restorable = std::mem::take(&mut state.sessions);
+            let auto_restore = std::mem::take(&mut state.restore_all_on_launch);
 
             app.manage(AppCtx {
                 base: base.clone(),
@@ -30,6 +32,8 @@ pub fn run() {
                 procs: Mutex::new(HashMap::new()),
                 statuses: Mutex::new(HashMap::new()),
                 restorable: Mutex::new(restorable),
+                auto_restore: Mutex::new(auto_restore),
+                session_bins: Mutex::new(HashMap::new()),
             });
 
             let handle = app.handle().clone();
@@ -93,7 +97,11 @@ pub fn run() {
             commands::check_claude,
             commands::reveal_in_finder,
             commands::copy_text,
-            commands::set_badge
+            commands::set_badge,
+            commands::auto_restore,
+            commands::check_claude_update,
+            commands::update_claude,
+            commands::restart_with_sessions
         ])
         .build(tauri::generate_context!())
         .expect("error building sonic")

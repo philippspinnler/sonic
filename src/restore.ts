@@ -3,6 +3,18 @@ import * as ipc from "./ipc";
 export async function maybeRestore(): Promise<void> {
   const prev = await ipc.previousSessions();
   if (prev.length === 0) return;
+  // after an update-and-restart, bring everything back without asking
+  if (await ipc.autoRestore()) {
+    for (const r of prev) {
+      try {
+        await ipc.startSession(r.profile_id, r.cwd, r.claude_session_id, r.name);
+      } catch (e) {
+        console.error("restore failed", r, e);
+      }
+    }
+    await ipc.discardPrevious();
+    return;
+  }
   const overlay = document.createElement("div");
   overlay.className = "overlay";
   const box = document.createElement("div");

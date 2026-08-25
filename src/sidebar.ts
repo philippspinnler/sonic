@@ -2,6 +2,7 @@ import { getState, select, subscribe, SessionView } from "./store";
 import { renameSession, revealInFinder, copyText, startSession, closeSession } from "./ipc";
 import { showContextMenu } from "./contextMenu";
 import { closeSessionWithConfirm, shortenHome } from "./actions";
+import { initUpdateBanner } from "./updateBanner";
 
 // Rows are updated in place and keyed by session id: rebuilding the DOM on
 // every store change breaks double-click (second click hits a new node) and
@@ -15,6 +16,10 @@ function ensureShell(): HTMLElement {
   list = document.createElement("div");
   list.className = "session-list";
   el.appendChild(list);
+  const update = document.createElement("div");
+  update.className = "update-banner";
+  el.appendChild(update);
+  initUpdateBanner(update);
   const version = document.createElement("div");
   version.className = "sidebar-version";
   version.textContent = `Sonic ${__APP_VERSION__}`;

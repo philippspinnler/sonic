@@ -3,6 +3,7 @@ use crate::{
     sessions::{self, SessionProc, SpawnSpec},
     state_store::{self, AppSettings, AppState, SessionRecord},
     status::StatusEvent,
+    updater,
 };
 use base64::Engine;
 use serde::Serialize;
@@ -17,6 +18,9 @@ pub struct AppCtx {
     pub procs: Mutex<HashMap<String, SessionProc>>,
     pub statuses: Mutex<HashMap<String, String>>,
     pub restorable: Mutex<Vec<SessionRecord>>,
+    pub auto_restore: Mutex<bool>,
+    /// resolved claude binary each running session was started from
+    pub session_bins: Mutex<HashMap<String, PathBuf>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -133,6 +137,9 @@ pub fn start_session(
     let profile = ctx.registry.lock().unwrap().get(&profile_id).ok_or("unknown profile")?;
     let id = uuid::Uuid::new_v4().to_string();
     let claude_bin = ctx.state.lock().unwrap().settings.claude_bin.clone();
+    if let Some(real) = claude_bin_path(&ctx).and_then(|b| updater::resolve_bin(&b)) {
+        ctx.session_bins.lock().unwrap().insert(id.clone(), real);
+    }
     let spec = SpawnSpec {
         session_id: id.clone(),
         cwd: PathBuf::from(&cwd),
@@ -230,6 +237,7 @@ pub fn close_session(app: AppHandle, ctx: State<AppCtx>, id: String) {
         p.kill();
     }
     ctx.statuses.lock().unwrap().remove(&id);
+    ctx.session_bins.lock().unwrap().remove(&id);
     let mut state = ctx.state.lock().unwrap();
     state.sessions.retain(|r| r.id != id);
     let _ = state_store::save(&ctx.base, &state);
@@ -266,6 +274,10 @@ pub fn set_settings(ctx: State<AppCtx>, settings: AppSettings) {
 
 #[tauri::command]
 pub fn check_claude(ctx: State<AppCtx>) -> Option<String> {
+    claude_bin_path(&ctx)
+}
+
+fn claude_bin_path(ctx: &AppCtx) -> Option<String> {
     if let Some(bin) = &ctx.state.lock().unwrap().settings.claude_bin {
         return Some(bin.clone());
     }
@@ -303,4 +315,45 @@ pub fn set_badge(app: AppHandle, count: i64) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_badge_count(if count > 0 { Some(count) } else { None });
     }
+}
+
+#[tauri::command]
+pub fn auto_restore(ctx: State<AppCtx>) -> bool {
+    std::mem::take(&mut *ctx.auto_restore.lock().unwrap())
+}
+
+#[tauri::command]
+pub async fn check_claude_update(app: AppHandle) -> updater::UpdateInfo {
+    let (bins, claude_bin) = {
+        let ctx = app.state::<AppCtx>();
+        let procs = ctx.procs.lock().unwrap();
+        let bins: Vec<PathBuf> = ctx.session_bins.lock().unwrap().iter()
+            .filter(|(id, _)| procs.contains_key(*id))
+            .map(|(_, b)| b.clone())
+            .collect();
+        (bins, claude_bin_path(&ctx))
+    };
+    let Some(claude_bin) = claude_bin else { return updater::UpdateInfo::default() };
+    tauri::async_runtime::spawn_blocking(move || updater::check(&bins, &claude_bin))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub async fn update_claude() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(updater::upgrade).await.map_err(err)?
+}
+
+/// Persist running sessions with a restore-all flag, then relaunch Sonic.
+#[tauri::command]
+pub fn restart_with_sessions(app: AppHandle, ctx: State<AppCtx>) -> Result<(), String> {
+    {
+        let mut state = ctx.state.lock().unwrap();
+        state.restore_all_on_launch = true;
+        state_store::save(&ctx.base, &state).map_err(err)?;
+    }
+    for (_, p) in ctx.procs.lock().unwrap().iter_mut() {
+        p.kill();
+    }
+    app.restart();
 }

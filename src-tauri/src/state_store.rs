@@ -31,6 +31,8 @@ pub struct AppState {
     #[serde(default)] pub sessions: Vec<SessionRecord>,
     #[serde(default)] pub recent_folders: HashMap<String, Vec<String>>,
     #[serde(default)] pub settings: AppSettings,
+    /// set before a self-restart so the next launch restores all sessions without asking
+    #[serde(default)] pub restore_all_on_launch: bool,
 }
 
 fn state_path(base: &Path) -> PathBuf { base.join("state.json") }

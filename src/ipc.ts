@@ -47,6 +47,17 @@ export const discardPrevious = () => invoke<void>("discard_previous");
 export const getSettings = () => invoke<AppSettings>("get_settings");
 export const setSettings = (settings: AppSettings) => invoke<void>("set_settings", { settings });
 export const checkClaude = () => invoke<string | null>("check_claude");
+
+export interface UpdateInfo {
+  installed: string | null;
+  latest: string | null;
+  needsUpgrade: boolean;
+  needsRestart: boolean;
+}
+export const autoRestore = () => invoke<boolean>("auto_restore");
+export const checkClaudeUpdate = () => invoke<UpdateInfo>("check_claude_update");
+export const updateClaude = () => invoke<void>("update_claude");
+export const restartWithSessions = () => invoke<void>("restart_with_sessions");
 export const setBadge = (count: number) => invoke<void>("set_badge", { count });
 export const revealInFinder = (path: string) => invoke<void>("reveal_in_finder", { path });
 export const copyText = (text: string) => invoke<void>("copy_text", { text });
