@@ -5,7 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { writeStdin, resizeSession, openUrl } from "./ipc";
-import { formatDroppedPaths } from "./dropPaths";
+import { dropPointInRect, formatDroppedPaths } from "./dropPaths";
 
 interface Pane {
   term: Terminal;
@@ -135,12 +135,8 @@ searchInput.addEventListener("keydown", e => {
 // webview and paste the paths into the active session like a terminal would.
 // Claude Code picks image paths up from the prompt and attaches them.
 const mainEl = document.getElementById("main")!;
-// Drop positions arrive in physical pixels; DOM rects are in CSS pixels.
 function overMain(pos: { x: number; y: number }): boolean {
-  const r = mainEl.getBoundingClientRect();
-  const x = pos.x / window.devicePixelRatio;
-  const y = pos.y / window.devicePixelRatio;
-  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  return dropPointInRect(pos, mainEl.getBoundingClientRect());
 }
 
 void getCurrentWebview().onDragDropEvent(ev => {
