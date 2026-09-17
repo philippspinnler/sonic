@@ -38,7 +38,7 @@ async function render(box: HTMLElement): Promise<void> {
       <input id="s-bin" placeholder="auto (from login shell PATH)" />
     </label>
     <label class="field row">Terminal font size <input id="s-font" type="number" min="9" max="24" style="width:60px" /></label>
-    <label class="field row"><input type="checkbox" id="s-notif" /> Notifications when a session needs input</label>
+    <label class="field row"><input type="checkbox" id="s-notif" /> Notifications when a terminal needs input</label>
     <div class="btn-row"><button id="s-close">Close</button></div>`;
 
   const rows = box.querySelector("#profile-rows")!;

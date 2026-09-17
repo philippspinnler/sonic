@@ -32,7 +32,7 @@ async function act(row: BannerRow, btn: HTMLButtonElement, err: HTMLElement): Pr
   const working = allTerminals(getState().projects).filter(t => t.status === "working").length;
   if (working > 0) {
     const yes = await ask(
-      `${working} session(s) are still working. Restart anyway? (They will be resumed after the restart.)`,
+      `${working} terminal(s) are still working. Restart anyway? (Claude terminals resume after the restart; shells come back fresh.)`,
       { title: "Restart Sonic" },
     );
     if (!yes) return;

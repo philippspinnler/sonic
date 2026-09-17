@@ -127,6 +127,7 @@ cargo run --example import_profiles -- "private=$HOME/.claude-private" "work=$HO
 | `⌘F` | Find in the terminal |
 | `⌘,` | Settings: profiles, `claude` binary path, notifications |
 | double-click a name | Rename the project or terminal |
+| right-click a row | Project menu: new shell / Claude terminal here, reveal folder, close; terminal menu: rename, close |
 
 Drag the sidebar's right edge to resize it.
 
@@ -162,7 +163,7 @@ shasum -a 256 release/Sonic-X.Y.Z.zip   # paste into Casks/sonic.rb in philippsp
 ## Limitations
 
 - macOS only (uses `nc -U`, Trash, the dock badge, and `open`).
-- Sessions don't survive the app quitting; use resume-on-relaunch instead.
+- Terminals don't survive the app quitting. Claude terminals can be resumed on the next launch; shells come back fresh.
 - Not affiliated with Anthropic.
 
 ## Name
