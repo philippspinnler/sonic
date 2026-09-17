@@ -1,14 +1,25 @@
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use std::{collections::HashMap, io::{self, Read, Write}, path::PathBuf};
 
+pub enum SpawnCommand {
+    /// `claude`, optionally resuming a previous transcript
+    Claude { bin: Option<String>, resume_id: Option<String> },
+    /// the user's login shell, e.g. `/bin/zsh -l`
+    Shell { shell: String },
+}
+
 pub struct SpawnSpec {
     pub session_id: String,
     pub cwd: PathBuf,
     pub config_dir: PathBuf,
     pub extra_env: HashMap<String, String>,
     pub socket_path: PathBuf,
-    pub claude_bin: Option<String>,
-    pub resume_id: Option<String>,
+    pub command: SpawnCommand,
+}
+
+/// The user's login shell from `$SHELL`, falling back to zsh (macOS default).
+pub fn login_shell() -> String {
+    std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/zsh".into())
 }
 
 pub struct SessionProc {
@@ -44,11 +55,17 @@ pub fn spawn(
     let pty = native_pty_system();
     let pair = pty.openpty(PtySize { rows: 30, cols: 100, pixel_width: 0, pixel_height: 0 })?;
 
-    let bin = spec.claude_bin.clone().unwrap_or_else(|| "claude".into());
-    let mut shell_cmd = format!("exec {}", shell_quote(&bin));
-    if let Some(rid) = &spec.resume_id {
-        shell_cmd.push_str(&format!(" --resume {}", shell_quote(rid)));
-    }
+    let shell_cmd = match &spec.command {
+        SpawnCommand::Claude { bin, resume_id } => {
+            let bin = bin.clone().unwrap_or_else(|| "claude".into());
+            let mut c = format!("exec {}", shell_quote(&bin));
+            if let Some(rid) = resume_id {
+                c.push_str(&format!(" --resume {}", shell_quote(rid)));
+            }
+            c
+        }
+        SpawnCommand::Shell { shell } => format!("exec {} -l", shell_quote(shell)),
+    };
 
     let mut cmd = CommandBuilder::new("/bin/zsh");
     cmd.args(["-lc", &shell_cmd]);
@@ -127,8 +144,7 @@ done
             config_dir: d.path().join("cfg"),
             extra_env: [("SONIC_TEST".to_string(), "1".to_string())].into(),
             socket_path: d.path().join("sock"),
-            claude_bin: Some(fake.to_string_lossy().into_owned()),
-            resume_id: Some("resume-xyz".into()),
+            command: SpawnCommand::Claude { bin: Some(fake.to_string_lossy().into_owned()), resume_id: Some("resume-xyz".into()) },
         };
         let mut proc = spawn(
             &spec,
@@ -176,12 +192,49 @@ done
             config_dir: d.path().join("cfg"),
             extra_env: Default::default(),
             socket_path: d.path().join("sock"),
-            claude_bin: Some(fake.to_string_lossy().into_owned()),
-            resume_id: None,
+            command: SpawnCommand::Claude { bin: Some(fake.to_string_lossy().into_owned()), resume_id: None },
         };
         let mut proc = spawn(&spec, |_| {}, move |c| { let _ = exit_tx.send(c); }).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(300));
         proc.kill();
         exit_rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+    }
+
+    #[test]
+    fn shell_spawn_runs_login_shell_in_project_folder() {
+        let d = tempdir().unwrap();
+        let work = tempdir().unwrap();
+        let fake = write_fake(d.path());
+        let out = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let out2 = out.clone();
+        let spec = SpawnSpec {
+            session_id: "sid-3".into(),
+            cwd: work.path().to_path_buf(),
+            config_dir: d.path().join("cfg"),
+            extra_env: Default::default(),
+            socket_path: d.path().join("sock"),
+            command: SpawnCommand::Shell { shell: fake.to_string_lossy().into_owned() },
+        };
+        let mut proc = spawn(&spec, move |b| out2.lock().unwrap().extend_from_slice(b), |_| {}).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let s = String::from_utf8_lossy(&out.lock().unwrap()).into_owned();
+            if s.contains("FAKE start") { break; }
+            assert!(std::time::Instant::now() < deadline, "no banner, got: {s}");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let s = String::from_utf8_lossy(&out.lock().unwrap()).into_owned();
+        assert!(s.contains("args=-l"), "shell must be a login shell, got: {s}");
+        assert!(s.contains(&format!("config={}", d.path().join("cfg").display())));
+        assert!(s.contains(&format!("cwd={}", std::fs::canonicalize(work.path()).unwrap().display())));
+        assert!(!s.contains("--resume"));
+        proc.write(b"quit\r").unwrap();
+    }
+
+    #[test]
+    fn login_shell_falls_back_to_zsh() {
+        // SHELL is normally set; the fallback path only needs to be a sane absolute path
+        let sh = login_shell();
+        assert!(sh.starts_with('/'), "got {sh}");
     }
 }

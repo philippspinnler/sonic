@@ -1,6 +1,6 @@
 use crate::{
     profiles::{Profile, ProfileRegistry},
-    sessions::{self, SessionProc, SpawnSpec},
+    sessions::{self, SessionProc, SpawnSpec, SpawnCommand},
     state_store::{self, AppSettings, AppState, ProjectRecord},
     status::StatusEvent,
     updater,
@@ -150,8 +150,7 @@ pub fn start_session(
         config_dir: profile.config_dir.clone(),
         extra_env: profile.env.clone(),
         socket_path: ctx.socket.clone(),
-        claude_bin,
-        resume_id: resume_id.clone(),
+        command: SpawnCommand::Claude { bin: claude_bin, resume_id: resume_id.clone() },
     };
     let (app_out, app_exit, id_out, id_exit) = (app.clone(), app.clone(), id.clone(), id.clone());
     let proc = sessions::spawn(
