@@ -33,7 +33,7 @@ terminal tabs, you get:
 - **`⌘N` to start a project**: pick a profile, pick a folder (recents or a native picker), go
 - **Profiles managed in-app**: create an isolated profile and log in right there, or import the
   config dirs you already have
-- **macOS notifications and a dock badge** when a session you're not looking at needs you
+- **macOS notifications and a dock badge** when a terminal you're not looking at needs you
 - **Resume on relaunch**: quit with projects open, and Sonic offers to pick each conversation up again
 
 It is deliberately lean. No worktree orchestration, no agent teams, no task boards — just projects
@@ -48,8 +48,8 @@ deleting an imported one never touches your files.
 
 **Projects.** Each project is a folder row in the sidebar with one or more terminals (Claude or shell), each running on its own PTY rendered in an
 [xterm.js](https://xtermjs.org/) pane, started in the project folder with the profile's
-environment. Terminals are children of the app; when Sonic quits they end, but their conversation
-ids are remembered so they can be resumed.
+environment. Terminals are children of the app; when Sonic quits they end. Claude terminals
+remember their conversation ids so they can be resumed; shells come back fresh.
 
 - **Several terminals per project**: add a plain shell (`⌘T`) or a second Claude terminal (`⌘⇧T`)
   to any project. They run in the project folder with the profile's environment, show as
