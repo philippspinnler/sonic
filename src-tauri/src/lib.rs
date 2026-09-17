@@ -42,11 +42,20 @@ pub fn run() {
                 commands::handle_status_event(&handle, ev);
             })?;
 
-            let new_s = MenuItemBuilder::with_id("new-session", "New Session")
+            let new_p = MenuItemBuilder::with_id("new-project", "New Project")
                 .accelerator("CmdOrCtrl+N")
                 .build(app)?;
-            let close_s = MenuItemBuilder::with_id("close-session", "Close Session")
+            let new_shell = MenuItemBuilder::with_id("new-shell", "New Shell in Project")
+                .accelerator("CmdOrCtrl+T")
+                .build(app)?;
+            let new_claude = MenuItemBuilder::with_id("new-claude", "New Claude Terminal in Project")
+                .accelerator("CmdOrCtrl+Shift+T")
+                .build(app)?;
+            let close_t = MenuItemBuilder::with_id("close-terminal", "Close Terminal")
                 .accelerator("CmdOrCtrl+W")
+                .build(app)?;
+            let close_p = MenuItemBuilder::with_id("close-project", "Close Project")
+                .accelerator("CmdOrCtrl+Shift+W")
                 .build(app)?;
             let settings = MenuItemBuilder::with_id("settings", "Settings…")
                 .accelerator("CmdOrCtrl+,")
@@ -65,9 +74,13 @@ pub fn run() {
                 .paste()
                 .select_all()
                 .build()?;
-            let session_menu = SubmenuBuilder::new(app, "Session")
-                .item(&new_s)
-                .item(&close_s)
+            let session_menu = SubmenuBuilder::new(app, "Project")
+                .item(&new_p)
+                .item(&new_shell)
+                .item(&new_claude)
+                .separator()
+                .item(&close_t)
+                .item(&close_p)
                 .build()?;
             let menu = MenuBuilder::new(app)
                 .items(&[&app_menu, &edit_menu, &session_menu])
@@ -84,15 +97,18 @@ pub fn run() {
             commands::import_profile,
             commands::update_profile,
             commands::delete_profile,
-            commands::list_sessions,
-            commands::start_session,
+            commands::list_projects,
+            commands::new_project,
+            commands::add_terminal,
             commands::write_stdin,
-            commands::resize_session,
-            commands::rename_session,
-            commands::reorder_sessions,
-            commands::close_session,
+            commands::resize_terminal,
+            commands::rename_project,
+            commands::rename_terminal,
+            commands::reorder_projects,
+            commands::close_terminal,
+            commands::close_project,
             commands::recent_folders,
-            commands::previous_sessions,
+            commands::previous_projects,
             commands::discard_previous,
             commands::get_settings,
             commands::set_settings,

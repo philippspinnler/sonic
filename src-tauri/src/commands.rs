@@ -1,7 +1,7 @@
 use crate::{
     profiles::{Profile, ProfileRegistry},
-    sessions::{self, SessionProc, SpawnSpec, SpawnCommand},
-    state_store::{self, AppSettings, AppState, ProjectRecord},
+    sessions::{self, SessionProc, SpawnCommand, SpawnSpec},
+    state_store::{self, AppSettings, AppState, ProjectRecord, TerminalKind, TerminalRecord},
     status::StatusEvent,
     updater,
 };
@@ -15,53 +15,80 @@ pub struct AppCtx {
     pub socket: PathBuf,
     pub state: Mutex<AppState>,
     pub registry: Mutex<ProfileRegistry>,
+    /// live ptys by terminal id
     pub procs: Mutex<HashMap<String, SessionProc>>,
+    /// last known status by terminal id
     pub statuses: Mutex<HashMap<String, String>>,
     pub restorable: Mutex<Vec<ProjectRecord>>,
     pub auto_restore: Mutex<bool>,
-    /// resolved claude binary each running session was started from
+    /// resolved claude binary each running Claude terminal was started from
     pub session_bins: Mutex<HashMap<String, PathBuf>>,
 }
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct SessionView {
+pub struct TerminalView {
+    pub id: String,
+    pub kind: TerminalKind,
+    pub name: String,
+    pub status: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectView {
     pub id: String,
     pub name: String,
     pub profile_id: String,
     pub profile_name: String,
     pub profile_color: String,
     pub cwd: String,
-    pub status: String,
     pub branch: Option<String>,
+    pub terminals: Vec<TerminalView>,
 }
 
-fn views(ctx: &AppCtx) -> Vec<SessionView> {
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NewProject {
+    pub project_id: String,
+    pub terminal_id: String,
+}
+
+fn views(ctx: &AppCtx) -> Vec<ProjectView> {
     let state = ctx.state.lock().unwrap();
     let reg = ctx.registry.lock().unwrap();
     let statuses = ctx.statuses.lock().unwrap();
     state
         .projects
         .iter()
-        .map(|r| {
-            let p = reg.get(&r.profile_id);
-            SessionView {
-                id: r.id.clone(),
-                name: r.name.clone(),
-                profile_id: r.profile_id.clone(),
-                profile_name: p.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
-                profile_color: p.as_ref().map(|p| p.color.clone()).unwrap_or("#565f89".into()),
-                cwd: r.cwd.clone(),
-                status: statuses.get(&r.id).cloned().unwrap_or("idle".into()),
-                branch: crate::git::branch(std::path::Path::new(&r.cwd)),
+        .map(|p| {
+            let prof = reg.get(&p.profile_id);
+            ProjectView {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                profile_id: p.profile_id.clone(),
+                profile_name: prof.as_ref().map(|x| x.name.clone()).unwrap_or_default(),
+                profile_color: prof.as_ref().map(|x| x.color.clone()).unwrap_or("#565f89".into()),
+                cwd: p.cwd.clone(),
+                branch: crate::git::branch(std::path::Path::new(&p.cwd)),
+                terminals: p
+                    .terminals
+                    .iter()
+                    .map(|t| TerminalView {
+                        id: t.id.clone(),
+                        kind: t.kind,
+                        name: p.terminal_name(&t.id).unwrap_or_default(),
+                        status: statuses.get(&t.id).cloned().unwrap_or("idle".into()),
+                    })
+                    .collect(),
             }
         })
         .collect()
 }
 
-pub fn emit_sessions(app: &AppHandle) {
+pub fn emit_projects(app: &AppHandle) {
     let ctx = app.state::<AppCtx>();
-    let _ = app.emit("sessions-changed", views(&ctx));
+    let _ = app.emit("projects-changed", views(&ctx));
 }
 
 pub fn handle_status_event(app: &AppHandle, ev: StatusEvent) {
@@ -69,23 +96,24 @@ pub fn handle_status_event(app: &AppHandle, ev: StatusEvent) {
     {
         let mut statuses = ctx.statuses.lock().unwrap();
         if !statuses.contains_key(&ev.sonic_session) {
-            return; // unknown or stale session
+            return; // unknown or stale terminal
         }
         statuses.insert(ev.sonic_session.clone(), ev.state.clone());
     }
     if let Some(cc_id) = ev.claude_session_id {
         let mut state = ctx.state.lock().unwrap();
-        if let Some(r) = state.projects.iter_mut().find(|r| r.id == ev.sonic_session) {
-            if let Some(t) = r.terminals.first_mut() {
-                if t.claude_session_id.as_deref() != Some(cc_id.as_str()) {
-                    t.claude_session_id = Some(cc_id);
-                    let _ = state_store::save(&ctx.base, &state);
-                }
-            }
+        let changed = state
+            .project_of_mut(&ev.sonic_session)
+            .and_then(|p| p.terminals.iter_mut().find(|t| t.id == ev.sonic_session))
+            .filter(|t| t.claude_session_id.as_deref() != Some(cc_id.as_str()))
+            .map(|t| t.claude_session_id = Some(cc_id))
+            .is_some();
+        if changed {
+            let _ = state_store::save(&ctx.base, &state);
         }
     }
     let _ = app.emit(
-        "session-status",
+        "terminal-status",
         serde_json::json!({ "id": ev.sonic_session, "status": ev.state }),
     );
 }
@@ -117,98 +145,155 @@ pub fn update_profile(ctx: State<AppCtx>, profile: Profile) -> Result<(), String
 #[tauri::command]
 pub fn delete_profile(ctx: State<AppCtx>, id: String) -> Result<(), String> {
     let state = ctx.state.lock().unwrap();
-    if state.projects.iter().any(|s| s.profile_id == id) {
-        return Err("Close this profile's sessions first".into());
+    if state.projects.iter().any(|p| p.profile_id == id) {
+        return Err("Close this profile's projects first".into());
     }
     drop(state);
     ctx.registry.lock().unwrap().delete(&id).map_err(err)
 }
 
 #[tauri::command]
-pub fn list_sessions(ctx: State<AppCtx>) -> Vec<SessionView> {
+pub fn list_projects(ctx: State<AppCtx>) -> Vec<ProjectView> {
     views(&ctx)
 }
 
-#[tauri::command]
-pub fn start_session(
-    app: AppHandle,
-    ctx: State<AppCtx>,
-    profile_id: String,
-    cwd: String,
+/// Spawn one pty for `profile` in `cwd`, register it in procs/statuses, and
+/// return the record to attach to a project. Shared by new_project and add_terminal.
+fn spawn_terminal(
+    app: &AppHandle,
+    ctx: &AppCtx,
+    profile: &Profile,
+    cwd: &str,
+    kind: TerminalKind,
     resume_id: Option<String>,
-    name: Option<String>,
-) -> Result<String, String> {
-    let profile = ctx.registry.lock().unwrap().get(&profile_id).ok_or("unknown profile")?;
+) -> Result<TerminalRecord, String> {
     let id = uuid::Uuid::new_v4().to_string();
-    let claude_bin = ctx.state.lock().unwrap().settings.claude_bin.clone();
-    if let Some(real) = claude_bin_path(&ctx).and_then(|b| updater::resolve_bin(&b)) {
-        ctx.session_bins.lock().unwrap().insert(id.clone(), real);
-    }
+    let command = match kind {
+        TerminalKind::Claude => {
+            let bin = ctx.state.lock().unwrap().settings.claude_bin.clone();
+            if let Some(real) = claude_bin_path(ctx).and_then(|b| updater::resolve_bin(&b)) {
+                ctx.session_bins.lock().unwrap().insert(id.clone(), real);
+            }
+            SpawnCommand::Claude { bin, resume_id: resume_id.clone() }
+        }
+        TerminalKind::Shell => SpawnCommand::Shell { shell: sessions::login_shell() },
+    };
     let spec = SpawnSpec {
         session_id: id.clone(),
-        cwd: PathBuf::from(&cwd),
+        cwd: PathBuf::from(cwd),
         config_dir: profile.config_dir.clone(),
         extra_env: profile.env.clone(),
         socket_path: ctx.socket.clone(),
-        command: SpawnCommand::Claude { bin: claude_bin, resume_id: resume_id.clone() },
+        command,
     };
     let (app_out, app_exit, id_out, id_exit) = (app.clone(), app.clone(), id.clone(), id.clone());
     let proc = sessions::spawn(
         &spec,
         move |bytes| {
             let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
-            let _ = app_out.emit("session-data", serde_json::json!({ "id": id_out, "dataB64": b64 }));
+            let _ = app_out.emit("terminal-data", serde_json::json!({ "id": id_out, "dataB64": b64 }));
         },
         move |_code| {
             let ctx = app_exit.state::<AppCtx>();
             ctx.statuses.lock().unwrap().insert(id_exit.clone(), "exited".into());
             let _ = app_exit.emit(
-                "session-status",
+                "terminal-status",
                 serde_json::json!({ "id": id_exit, "status": "exited" }),
             );
         },
     )
     .map_err(err)?;
+    ctx.procs.lock().unwrap().insert(id.clone(), proc);
+    let initial = match kind {
+        TerminalKind::Shell => "idle",
+        TerminalKind::Claude if profile.hooks_ok => "idle",
+        TerminalKind::Claude => "unknown",
+    };
+    ctx.statuses.lock().unwrap().insert(id.clone(), initial.into());
+    Ok(TerminalRecord {
+        id,
+        kind,
+        name: None,
+        claude_session_id: match kind {
+            TerminalKind::Claude => resume_id,
+            TerminalKind::Shell => None,
+        },
+        created_at: chrono::Utc::now().to_rfc3339(),
+    })
+}
 
+/// Create a project and its default Claude terminal in one step.
+#[tauri::command]
+pub fn new_project(
+    app: AppHandle,
+    ctx: State<AppCtx>,
+    profile_id: String,
+    cwd: String,
+    name: Option<String>,
+    resume_id: Option<String>,
+) -> Result<NewProject, String> {
+    let profile = ctx.registry.lock().unwrap().get(&profile_id).ok_or("unknown profile")?;
+    let term = spawn_terminal(&app, &ctx, &profile, &cwd, TerminalKind::Claude, resume_id)?;
     let default_name = PathBuf::from(&cwd)
         .file_name()
         .map(|f| f.to_string_lossy().into_owned())
         .unwrap_or_else(|| cwd.clone());
-    let created_at = chrono::Utc::now().to_rfc3339();
-    let record = ProjectRecord {
-        id: id.clone(),
+    let project = ProjectRecord {
+        id: uuid::Uuid::new_v4().to_string(),
         name: name.unwrap_or(default_name),
         profile_id: profile_id.clone(),
         cwd: cwd.clone(),
-        created_at: created_at.clone(),
-        terminals: vec![state_store::TerminalRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            kind: state_store::TerminalKind::Claude,
-            name: None,
-            claude_session_id: resume_id,
-            created_at,
-        }],
+        created_at: chrono::Utc::now().to_rfc3339(),
+        terminals: vec![term.clone()],
     };
+    let project_id = project.id.clone();
     {
         let mut state = ctx.state.lock().unwrap();
-        state.projects.push(record);
+        state.projects.push(project);
         state_store::push_recent(&mut state, &profile_id, &cwd);
         let _ = state_store::save(&ctx.base, &state);
     }
-    ctx.procs.lock().unwrap().insert(id.clone(), proc);
-    ctx.statuses.lock().unwrap().insert(
-        id.clone(),
-        if profile.hooks_ok { "idle".into() } else { "unknown".into() },
-    );
-    emit_sessions(&app);
-    Ok(id)
+    emit_projects(&app);
+    Ok(NewProject { project_id, terminal_id: term.id })
+}
+
+/// Add a shell or Claude terminal to an existing project.
+#[tauri::command]
+pub fn add_terminal(
+    app: AppHandle,
+    ctx: State<AppCtx>,
+    project_id: String,
+    kind: TerminalKind,
+    resume_id: Option<String>,
+) -> Result<String, String> {
+    let (profile_id, cwd) = ctx
+        .state
+        .lock()
+        .unwrap()
+        .projects
+        .iter()
+        .find(|p| p.id == project_id)
+        .map(|p| (p.profile_id.clone(), p.cwd.clone()))
+        .ok_or("unknown project")?;
+    let profile = ctx.registry.lock().unwrap().get(&profile_id).ok_or("unknown profile")?;
+    let term = spawn_terminal(&app, &ctx, &profile, &cwd, kind, resume_id)?;
+    let terminal_id = term.id.clone();
+    {
+        let mut state = ctx.state.lock().unwrap();
+        if let Some(p) = state.projects.iter_mut().find(|p| p.id == project_id) {
+            p.terminals.push(term);
+        }
+        let _ = state_store::save(&ctx.base, &state);
+    }
+    emit_projects(&app);
+    Ok(terminal_id)
 }
 
 #[tauri::command]
 pub fn write_stdin(app: AppHandle, ctx: State<AppCtx>, id: String, data_b64: String) -> Result<(), String> {
     let bytes = base64::engine::general_purpose::STANDARD.decode(data_b64).map_err(err)?;
     let mut procs = ctx.procs.lock().unwrap();
-    let proc = procs.get_mut(&id).ok_or("no such session")?;
+    let proc = procs.get_mut(&id).ok_or("no such terminal")?;
     proc.write(&bytes).map_err(err)?;
     drop(procs);
     // fast-path: submitting while waiting flips to working; hooks confirm shortly after
@@ -217,39 +302,50 @@ pub fn write_stdin(app: AppHandle, ctx: State<AppCtx>, id: String, data_b64: Str
         if statuses.get(&id).map(String::as_str) == Some("waiting") {
             statuses.insert(id.clone(), "working".into());
             drop(statuses);
-            let _ = app.emit("session-status", serde_json::json!({ "id": id, "status": "working" }));
+            let _ = app.emit("terminal-status", serde_json::json!({ "id": id, "status": "working" }));
         }
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn resize_session(ctx: State<AppCtx>, id: String, cols: u16, rows: u16) {
+pub fn resize_terminal(ctx: State<AppCtx>, id: String, cols: u16, rows: u16) {
     if let Some(p) = ctx.procs.lock().unwrap().get(&id) {
         p.resize(cols, rows);
     }
 }
 
 #[tauri::command]
-pub fn rename_session(app: AppHandle, ctx: State<AppCtx>, id: String, name: String) {
+pub fn rename_project(app: AppHandle, ctx: State<AppCtx>, id: String, name: String) {
     let mut state = ctx.state.lock().unwrap();
-    if let Some(r) = state.projects.iter_mut().find(|r| r.id == id) {
-        r.name = name;
+    if let Some(p) = state.projects.iter_mut().find(|p| p.id == id) {
+        p.name = name;
     }
     let _ = state_store::save(&ctx.base, &state);
     drop(state);
-    emit_sessions(&app);
+    emit_projects(&app);
 }
 
-/// Reorder sessions to match `ids`; ids that are unknown are ignored and
-/// sessions not mentioned keep their relative order at the end.
 #[tauri::command]
-pub fn reorder_sessions(app: AppHandle, ctx: State<AppCtx>, ids: Vec<String>) {
+pub fn rename_terminal(app: AppHandle, ctx: State<AppCtx>, id: String, name: String) {
+    let mut state = ctx.state.lock().unwrap();
+    if let Some(t) = state.project_of_mut(&id).and_then(|p| p.terminals.iter_mut().find(|t| t.id == id)) {
+        t.name = Some(name);
+    }
+    let _ = state_store::save(&ctx.base, &state);
+    drop(state);
+    emit_projects(&app);
+}
+
+/// Reorder projects to match `ids`; unknown ids are ignored and projects not
+/// mentioned keep their relative order at the end.
+#[tauri::command]
+pub fn reorder_projects(app: AppHandle, ctx: State<AppCtx>, ids: Vec<String>) {
     let mut state = ctx.state.lock().unwrap();
     let mut rest = std::mem::take(&mut state.projects);
     let mut ordered = Vec::with_capacity(rest.len());
     for id in &ids {
-        if let Some(i) = rest.iter().position(|r| &r.id == id) {
+        if let Some(i) = rest.iter().position(|p| &p.id == id) {
             ordered.push(rest.remove(i));
         }
     }
@@ -257,21 +353,47 @@ pub fn reorder_sessions(app: AppHandle, ctx: State<AppCtx>, ids: Vec<String>) {
     state.projects = ordered;
     let _ = state_store::save(&ctx.base, &state);
     drop(state);
-    emit_sessions(&app);
+    emit_projects(&app);
+}
+
+fn kill_terminal(ctx: &AppCtx, id: &str) {
+    if let Some(mut p) = ctx.procs.lock().unwrap().remove(id) {
+        p.kill();
+    }
+    ctx.statuses.lock().unwrap().remove(id);
+    ctx.session_bins.lock().unwrap().remove(id);
+}
+
+/// Close one terminal. If it was the project's last, the project goes too.
+#[tauri::command]
+pub fn close_terminal(app: AppHandle, ctx: State<AppCtx>, id: String) {
+    kill_terminal(&ctx, &id);
+    let mut state = ctx.state.lock().unwrap();
+    state.remove_terminal(&id);
+    let _ = state_store::save(&ctx.base, &state);
+    drop(state);
+    emit_projects(&app);
 }
 
 #[tauri::command]
-pub fn close_session(app: AppHandle, ctx: State<AppCtx>, id: String) {
-    if let Some(mut p) = ctx.procs.lock().unwrap().remove(&id) {
-        p.kill();
+pub fn close_project(app: AppHandle, ctx: State<AppCtx>, id: String) {
+    let terminal_ids: Vec<String> = ctx
+        .state
+        .lock()
+        .unwrap()
+        .projects
+        .iter()
+        .find(|p| p.id == id)
+        .map(|p| p.terminals.iter().map(|t| t.id.clone()).collect())
+        .unwrap_or_default();
+    for tid in &terminal_ids {
+        kill_terminal(&ctx, tid);
     }
-    ctx.statuses.lock().unwrap().remove(&id);
-    ctx.session_bins.lock().unwrap().remove(&id);
     let mut state = ctx.state.lock().unwrap();
-    state.projects.retain(|r| r.id != id);
+    state.projects.retain(|p| p.id != id);
     let _ = state_store::save(&ctx.base, &state);
     drop(state);
-    emit_sessions(&app);
+    emit_projects(&app);
 }
 
 #[tauri::command]
@@ -280,7 +402,7 @@ pub fn recent_folders(ctx: State<AppCtx>, profile_id: String) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn previous_sessions(ctx: State<AppCtx>) -> Vec<ProjectRecord> {
+pub fn previous_projects(ctx: State<AppCtx>) -> Vec<ProjectRecord> {
     ctx.restorable.lock().unwrap().clone()
 }
 
