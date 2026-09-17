@@ -1,53 +1,96 @@
 import { describe, expect, test, beforeEach } from "vitest";
-import { getState, setSessions, setStatus, select, waitingCount, formatElapsed, _reset, SessionView } from "./store";
+import {
+  getState, setProjects, setStatus, select, selectProject, findTerminal, selectedProject,
+  allTerminals, waitingCount, formatElapsed, _reset, ProjectView, TerminalView, Status, TerminalKind,
+} from "./store";
 
-const sv = (id: string, status = "idle"): SessionView => ({
-  id, name: id, profileId: "p", profileName: "P", profileColor: "#fff", cwd: "/x", status: status as SessionView["status"], branch: null,
+const t = (id: string, kind: TerminalKind = "claude", status: Status = "idle"): TerminalView => ({ id, kind, name: id, status });
+const pv = (id: string, terminals: TerminalView[]): ProjectView => ({
+  id, name: id, profileId: "p", profileName: "P", profileColor: "#fff", cwd: "/x", branch: null, terminals,
 });
 
 beforeEach(() => _reset());
 
 describe("store", () => {
-  test("first session auto-selected", () => {
-    setSessions([sv("a"), sv("b")]);
-    expect(getState().selectedId).toBe("a");
+  test("first project's primary terminal auto-selected", () => {
+    setProjects([pv("a", [t("a-s", "shell"), t("a-c")]), pv("b", [t("b-c")])]);
+    expect(getState().selectedId).toBe("a-c");
   });
 
-  test("selection survives list update, falls back when removed", () => {
-    setSessions([sv("a"), sv("b")]);
-    select("b");
-    setSessions([sv("a"), sv("b"), sv("c")]);
-    expect(getState().selectedId).toBe("b");
-    setSessions([sv("a"), sv("c")]);
-    expect(getState().selectedId).toBe("a");
+  test("selection survives list update", () => {
+    setProjects([pv("a", [t("a-c")]), pv("b", [t("b-c")])]);
+    select("b-c");
+    setProjects([pv("a", [t("a-c")]), pv("b", [t("b-c")]), pv("c", [t("c-c")])]);
+    expect(getState().selectedId).toBe("b-c");
   });
 
-  test("setStatus updates one session", () => {
-    setSessions([sv("a"), sv("b")]);
-    setStatus("b", "waiting");
-    expect(getState().sessions.find(s => s.id === "b")!.status).toBe("waiting");
-    expect(getState().sessions.find(s => s.id === "a")!.status).toBe("idle");
+  test("closing the selected terminal falls back within the same project", () => {
+    setProjects([pv("a", [t("a-c"), t("a-s", "shell")]), pv("b", [t("b-c")])]);
+    select("a-s");
+    setProjects([pv("a", [t("a-c")]), pv("b", [t("b-c")])]);
+    expect(getState().selectedId).toBe("a-c");
   });
 
-  test("waitingCount counts waiting sessions", () => {
-    setSessions([sv("a", "waiting"), sv("b"), sv("c", "waiting")]);
+  test("closing the selected project falls back to the first project", () => {
+    setProjects([pv("a", [t("a-c")]), pv("b", [t("b-c")])]);
+    select("b-c");
+    setProjects([pv("a", [t("a-c")])]);
+    expect(getState().selectedId).toBe("a-c");
+  });
+
+  test("selectProject remembers the last terminal picked in it", () => {
+    setProjects([pv("a", [t("a-c"), t("a-s", "shell")]), pv("b", [t("b-c")])]);
+    select("a-s");
+    selectProject("b");
+    expect(getState().selectedId).toBe("b-c");
+    selectProject("a");
+    expect(getState().selectedId).toBe("a-s");
+  });
+
+  test("selectProject falls back to primary when the remembered terminal is gone", () => {
+    setProjects([pv("a", [t("a-c"), t("a-s", "shell")]), pv("b", [t("b-c")])]);
+    select("a-s");
+    selectProject("b");
+    setProjects([pv("a", [t("a-c")]), pv("b", [t("b-c")])]);
+    selectProject("a");
+    expect(getState().selectedId).toBe("a-c");
+  });
+
+  test("setStatus updates one terminal", () => {
+    setProjects([pv("a", [t("a-c"), t("a-s", "shell")])]);
+    setStatus("a-s", "exited");
+    expect(findTerminal("a-s")!.terminal.status).toBe("exited");
+    expect(findTerminal("a-c")!.terminal.status).toBe("idle");
+  });
+
+  test("findTerminal and selectedProject", () => {
+    setProjects([pv("a", [t("a-c")]), pv("b", [t("b-c")])]);
+    expect(findTerminal("b-c")!.project.id).toBe("b");
+    expect(findTerminal("zz")).toBeUndefined();
+    select("b-c");
+    expect(selectedProject()!.id).toBe("b");
+  });
+
+  test("waitingCount counts waiting terminals across projects", () => {
+    setProjects([pv("a", [t("a-c", "claude", "waiting"), t("a-s", "shell")]), pv("b", [t("b-c", "claude", "waiting")])]);
     expect(waitingCount()).toBe(2);
+    expect(allTerminals(getState().projects).length).toBe(3);
   });
 
   test("empty list clears selection", () => {
-    setSessions([sv("a")]);
-    setSessions([]);
+    setProjects([pv("a", [t("a-c")])]);
+    setProjects([]);
     expect(getState().selectedId).toBeNull();
   });
 
   test("workingSince starts on transition to working and survives refreshes", () => {
-    setSessions([sv("a")], 1000);
-    setStatus("a", "working", 5000);
-    expect(getState().sessions[0].workingSince).toBe(5000);
-    setSessions([sv("a", "working")], 9000);
-    expect(getState().sessions[0].workingSince).toBe(5000);
-    setStatus("a", "idle", 12000);
-    expect(getState().sessions[0].workingSince).toBeUndefined();
+    setProjects([pv("a", [t("a-c")])], 1000);
+    setStatus("a-c", "working", 5000);
+    expect(findTerminal("a-c")!.terminal.workingSince).toBe(5000);
+    setProjects([pv("a", [t("a-c", "claude", "working")])], 9000);
+    expect(findTerminal("a-c")!.terminal.workingSince).toBe(5000);
+    setStatus("a-c", "idle", 12000);
+    expect(findTerminal("a-c")!.terminal.workingSince).toBeUndefined();
   });
 });
 
