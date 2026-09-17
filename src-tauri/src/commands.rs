@@ -280,8 +280,13 @@ pub fn add_terminal(
     let terminal_id = term.id.clone();
     {
         let mut state = ctx.state.lock().unwrap();
-        if let Some(p) = state.projects.iter_mut().find(|p| p.id == project_id) {
-            p.terminals.push(term);
+        match state.projects.iter_mut().find(|p| p.id == project_id) {
+            Some(p) => p.terminals.push(term),
+            None => {
+                drop(state);
+                kill_terminal(&ctx, &terminal_id);
+                return Err("unknown project".into());
+            }
         }
         let _ = state_store::save(&ctx.base, &state);
     }

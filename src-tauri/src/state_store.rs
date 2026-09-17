@@ -347,4 +347,11 @@ mod tests {
     fn notifications_default_true() {
         assert!(AppState::default().settings.notifications);
     }
+
+    #[test]
+    fn terminal_kind_serializes_lowercase() {
+        assert_eq!(serde_json::to_string(&TerminalKind::Claude).unwrap(), "\"claude\"");
+        assert_eq!(serde_json::to_string(&TerminalKind::Shell).unwrap(), "\"shell\"");
+        assert_eq!(serde_json::from_str::<TerminalKind>("\"shell\"").unwrap(), TerminalKind::Shell);
+    }
 }

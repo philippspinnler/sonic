@@ -178,6 +178,7 @@ export function renderSidebar(): void {
   const seen = new Set<string>();
   projects.forEach((p, i) => {
     seen.add(p.id);
+    if (p.terminals.length === 0) return;
     let group = groups.get(p.id);
     if (!group) {
       group = createGroup(p.id);

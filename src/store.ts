@@ -86,7 +86,9 @@ export function setProjects(projects: ProjectView[], now = Date.now()): void {
     const p = next.find(x => x.id === prevProjectId) ?? next[0];
     selectedId = p && p.terminals.length > 0 ? terminalFor(p, state.lastSelected).id : null;
   }
-  state = { ...state, projects: next, selectedId };
+  const owner = next.find(p => p.terminals.some(t => t.id === selectedId));
+  const lastSelected = owner && selectedId ? { ...state.lastSelected, [owner.id]: selectedId } : state.lastSelected;
+  state = { ...state, projects: next, selectedId, lastSelected };
   notify();
 }
 

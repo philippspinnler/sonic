@@ -47,6 +47,15 @@ describe("store", () => {
     expect(getState().selectedId).toBe("a-s");
   });
 
+  test("a terminal selected before its project's projects event lands is still remembered", () => {
+    setProjects([pv("a", [t("a-c")]), pv("b", [t("b-c")])]);
+    select("a-s"); // not known to the store yet
+    setProjects([pv("a", [t("a-c"), t("a-s", "shell")]), pv("b", [t("b-c")])]);
+    selectProject("b");
+    selectProject("a");
+    expect(getState().selectedId).toBe("a-s");
+  });
+
   test("selectProject falls back to primary when the remembered terminal is gone", () => {
     setProjects([pv("a", [t("a-c"), t("a-s", "shell")]), pv("b", [t("b-c")])]);
     select("a-s");
