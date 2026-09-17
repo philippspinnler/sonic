@@ -13,6 +13,14 @@
   <img src="assets/screenshot.png" width="900" alt="Sonic showing several Claude Code sessions in the sidebar with live status, and the active session's terminal">
 </p>
 
+<p align="center">
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#keyboard">Keyboard</a> ·
+  <a href="#development">Development</a> ·
+  <a href="#limitations">Limitations</a>
+</p>
+
 ---
 
 Sonic is a small macOS app for people who run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) under
