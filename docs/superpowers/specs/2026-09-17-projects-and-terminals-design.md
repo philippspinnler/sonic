@@ -161,8 +161,11 @@ File drops paste into the active terminal, as today.
 
 ## 8. Restore, Notifications, Edge Cases
 
-- **Restore on launch** rebuilds each project in order, then its terminals in order. Claude
-  terminals resume by id; shells start fresh in the same folder. The restore dialog lists
+- **Restore on launch** rebuilds each project in order. The project's first Claude terminal is
+  created with the project (so it always lands at position 0, even if a shell preceded it before
+  the relaunch), then the remaining terminals are added in their stored order. Claude terminals
+  resume by id; shells start fresh in the same folder. A project whose Claude terminal was closed
+  before quitting (shells only) comes back with a fresh Claude terminal plus its shells, per §2. The restore dialog lists
   projects. Auto-restore after an update restores everything, as today.
 - **Notifications and dock badge** stay per terminal. The notification title is the project
   name, extended to `project · terminal` when the project has more than one terminal.
@@ -199,6 +202,12 @@ TypeScript (vitest):
 - Sortable tests adjusted to project ids.
 
 Manual: spawn a shell in the dev build, type `claude`, confirm the shell row's dot follows it.
+The "a new project has exactly one Claude terminal" invariant holds by construction in
+`new_project` and is verified manually, not by a unit test (the command needs a Tauri app handle).
+
+Known corner: a `claude` started by hand in a shell terminal reports `waiting` to that shell's row,
+which raises the dock badge and notification (§8) but is excluded from the project rollup (§5).
+In a shells-only project this means a badge with no yellow project dot. Accepted.
 
 ## 11. Build Order (high level)
 
