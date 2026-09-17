@@ -6,11 +6,11 @@
 
 <p align="center">
   One window for all your Claude Code identities.<br>
-  Sessions in a sidebar, live status, isolated profiles per account or client.
+  Projects in a sidebar, live status, isolated profiles per account or client.
 </p>
 
 <p align="center">
-  <img src="assets/screenshot.png" width="900" alt="Sonic showing several Claude Code sessions in the sidebar with live status, and the active session's terminal">
+  <img src="assets/screenshot.png" width="900" alt="Sonic showing several Claude Code projects in the sidebar with live status, and the active project's terminal">
 </p>
 
 <p align="center">
@@ -28,15 +28,15 @@ Sonic is a small macOS app for people who run [Claude Code](https://docs.anthrop
 `CLAUDE_CONFIG_DIR`, its own login, and its own MCP servers. Instead of juggling shell aliases and
 terminal tabs, you get:
 
-- **A sidebar of every running session**, each with a status dot:
+- **A sidebar of every running project**, each with a status dot:
   grey *idle* · pulsing blue *working* · yellow *waiting for input* · red *exited*
-- **`⌘N` to start a session**: pick a profile, pick a folder (recents or a native picker), go
+- **`⌘N` to start a project**: pick a profile, pick a folder (recents or a native picker), go
 - **Profiles managed in-app**: create an isolated profile and log in right there, or import the
   config dirs you already have
 - **macOS notifications and a dock badge** when a session you're not looking at needs you
-- **Resume on relaunch**: quit with sessions open, and Sonic offers to pick each conversation up again
+- **Resume on relaunch**: quit with projects open, and Sonic offers to pick each conversation up again
 
-It is deliberately lean. No worktree orchestration, no agent teams, no task boards — just sessions
+It is deliberately lean. No worktree orchestration, no agent teams, no task boards — just projects
 and profiles.
 
 ## How it works
@@ -46,10 +46,14 @@ data directory and are created by the app; *imported* profiles point at director
 use (for example `~/.claude-work`). Deleting a managed profile moves its directory to the Trash;
 deleting an imported one never touches your files.
 
-**Sessions.** Each session is a real `claude` process on its own PTY, rendered in an
-[xterm.js](https://xtermjs.org/) pane, started in the folder you chose with the profile's
-environment. Sessions are children of the app; when Sonic quits they end, but their conversation
+**Projects.** Each project is a folder row in the sidebar with one or more terminals (Claude or shell), each running on its own PTY rendered in an
+[xterm.js](https://xtermjs.org/) pane, started in the project folder with the profile's
+environment. Terminals are children of the app; when Sonic quits they end, but their conversation
 ids are remembered so they can be resumed.
+
+- **Several terminals per project**: add a plain shell (`⌘T`) or a second Claude terminal (`⌘⇧T`)
+  to any project. They run in the project folder with the profile's environment, show as
+  indented rows, and cycle with `⌘⇧]` / `⌘⇧[`.
 
 **Status.** Claude Code doesn't expose a status API, so Sonic uses its official
 [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks). On profile creation or import, three
@@ -113,12 +117,16 @@ cargo run --example import_profiles -- "private=$HOME/.claude-private" "work=$HO
 
 | Shortcut | Action |
 |---|---|
-| `⌘N` | New session (profile → folder) |
-| `⌘W` | Close the selected session (asks first if it's working) |
-| `⌘1` … `⌘9` | Jump to the n-th session |
+| `⌘N` | New project (profile → folder), opens with its Claude terminal |
+| `⌘T` | New shell in the selected project |
+| `⌘⇧T` | New Claude terminal in the selected project |
+| `⌘W` | Close the selected terminal (asks first if it's working); the last one closes the project |
+| `⌘⇧W` | Close the selected project |
+| `⌘1` … `⌘9` | Jump to the n-th project |
+| `⌘⇧]` / `⌘⇧[` | Next / previous terminal in the project |
+| `⌘F` | Find in the terminal |
 | `⌘,` | Settings: profiles, `claude` binary path, notifications |
-| double-click a name | Rename the session |
-| right-click a row | Rename · Reveal folder in Finder · Copy path · Close |
+| double-click a name | Rename the project or terminal |
 
 Drag the sidebar's right edge to resize it.
 
