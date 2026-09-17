@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshot.png" width="900" alt="Sonic showing several Claude Code projects in the sidebar with live status, and the active project's terminal">
+  <img src="assets/screenshot-0.1.11.png" width="900" alt="Sonic showing several Claude Code projects in the sidebar with live status, one expanded into its Claude and shell terminals, and the active terminal">
 </p>
 
 <p align="center">
@@ -30,14 +30,18 @@ terminal tabs, you get:
 
 - **A sidebar of every running project**, each with a status dot:
   grey *idle* · pulsing blue *working* · yellow *waiting for input* · red *exited*
+- **Several terminals per project**: every project starts with a Claude terminal; add plain
+  shells (`⌘T`) or more Claude terminals (`⌘⇧T`) and they appear as rows nested under the project
 - **`⌘N` to start a project**: pick a profile, pick a folder (recents or a native picker), go
+- **A sidebar you can arrange**: drag projects into the order you want, double-click to rename a
+  project or terminal, right-click for the project and terminal menus
 - **Profiles managed in-app**: create an isolated profile and log in right there, or import the
   config dirs you already have
 - **macOS notifications and a dock badge** when a terminal you're not looking at needs you
 - **Resume on relaunch**: quit with projects open, and Sonic offers to pick each conversation up again
 
-It is deliberately lean. No worktree orchestration, no agent teams, no task boards — just projects
-and profiles.
+It is deliberately lean. No worktree orchestration, no agent teams, no task boards — just projects,
+terminals and profiles.
 
 ## How it works
 
@@ -151,7 +155,8 @@ Sonic never modifies Claude Code itself; it only uses environment variables, hoo
 
 ### Releasing
 
-Bump `version` in `package.json` and `src-tauri/tauri.conf.json`, then:
+Bump `version` in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` (the
+build refreshes the lockfiles), then:
 
 ```sh
 npm run tauri build
@@ -159,6 +164,10 @@ ditto -c -k --keepParent src-tauri/target/release/bundle/macos/Sonic.app release
 gh release create vX.Y.Z release/Sonic-X.Y.Z.zip --title "Sonic X.Y.Z"
 shasum -a 256 release/Sonic-X.Y.Z.zip   # paste into Casks/sonic.rb in philippspinnler/homebrew-tap
 ```
+
+If the README screenshot changed, save it under a new file name (`assets/screenshot-X.Y.Z.png`)
+and point the README at it. GitHub caches README images by URL, so overwriting the old file
+keeps showing the old picture.
 
 ## Limitations
 
