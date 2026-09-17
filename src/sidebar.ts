@@ -1,15 +1,20 @@
-import { getState, selectProject, subscribe, formatElapsed, ProjectView } from "./store";
-import { renameProject, reorderProjects, revealInFinder, copyText } from "./ipc";
+import { getState, select, selectProject, subscribe, formatElapsed, ProjectView, TerminalView } from "./store";
+import { renameProject, renameTerminal, reorderProjects, revealInFinder, copyText } from "./ipc";
 import { moveItem, dropIndex } from "./sortable";
 import { showContextMenu } from "./contextMenu";
-import { closeProjectWithConfirm, restartTerminal, shortenHome } from "./actions";
-import { initUpdateBanner } from "./updateBanner";
+import {
+  closeProjectWithConfirm, closeTerminalWithConfirm, addTerminalAndSelect, restartTerminal, shortenHome,
+} from "./actions";
 import { primaryTerminal, rollupStatus } from "./projects";
+import { initUpdateBanner } from "./updateBanner";
 
-// Rows are updated in place and keyed by session id: rebuilding the DOM on
-// every store change breaks double-click (second click hits a new node) and
-// would destroy an in-progress rename input on any status event.
-const rows = new Map<string, HTMLElement>();
+// Each project is a `.project-group`: its project row followed by one
+// `.terminal-row` per terminal when there are two or more. Nodes are updated
+// in place and keyed by id: rebuilding the DOM on every store change breaks
+// double-click (second click hits a new node) and would destroy an
+// in-progress rename input on any status event.
+const groups = new Map<string, HTMLElement>();
+const termRows = new Map<string, HTMLElement>();
 let list: HTMLElement | null = null;
 
 function ensureShell(): HTMLElement {
@@ -28,7 +33,7 @@ function ensureShell(): HTMLElement {
   el.appendChild(version);
   const footer = document.createElement("div");
   footer.className = "sidebar-footer";
-  footer.innerHTML = `<button id="btn-new">＋ New session</button><button id="btn-settings">⚙</button>`;
+  footer.innerHTML = `<button id="btn-new">＋ New project</button><button id="btn-settings">⚙</button>`;
   el.appendChild(footer);
   footer.querySelector("#btn-new")!.addEventListener("click", () =>
     window.dispatchEvent(new CustomEvent("sonic:new-session")),
@@ -39,9 +44,18 @@ function ensureShell(): HTMLElement {
   return list;
 }
 
-function createRow(id: string): HTMLElement {
+function project(id: string): ProjectView | undefined {
+  return getState().projects.find(p => p.id === id);
+}
+
+// ---- project rows ----
+
+function createGroup(id: string): HTMLElement {
+  const group = document.createElement("div");
+  group.className = "project-group";
+  group.dataset.id = id;
   const row = document.createElement("div");
-  row.className = "session-row";
+  row.className = "session-row project";
   row.innerHTML = `
     <span class="dot"></span>
     <span class="row-main">
@@ -58,97 +72,162 @@ function createRow(id: string): HTMLElement {
   });
   row.addEventListener("mousedown", e => {
     if (e.button !== 0 || (e.target as HTMLElement).closest("input, .restart")) return;
-    beginDrag(row, id, e.clientY);
+    beginDrag(group, id, e.clientY);
   });
   row.querySelector(".row-name")!.addEventListener("dblclick", e => {
     e.stopPropagation();
-    startRename(row, id);
+    startRename(row, name => void renameProject(id, name));
   });
   row.addEventListener("contextmenu", e => {
     e.preventDefault();
-    if (getState().selectedId !== id) selectProject(id);
-    const s = getState().projects.find(x => x.id === id);
-    if (s) showContextMenu(e.clientX, e.clientY, contextItems(row, s));
+    selectProject(id);
+    const p = project(id);
+    if (p) showContextMenu(e.clientX, e.clientY, projectMenu(row, p));
   });
-  return row;
+  group.appendChild(row);
+  return group;
 }
 
-function updateRow(row: HTMLElement, s: ProjectView, selected: boolean): void {
-  const primary = primaryTerminal(s);
-  const status = rollupStatus(s);
-  row.className =
-    "session-row" + (selected ? " selected" : "") + (status === "waiting" ? " waiting" : "");
-  const dot = row.querySelector<HTMLElement>(".dot")!;
+function setDot(dot: HTMLElement, status: TerminalView["status"]): void {
   dot.className = `dot ${status}`;
   dot.title = status === "unknown"
     ? "Status unknown: Sonic's hooks are not installed for this profile (its settings.json could not be parsed). See Settings."
     : status;
-  const nameEl = row.querySelector<HTMLElement>(".row-name");
-  if (nameEl && nameEl.textContent !== s.name) nameEl.textContent = s.name; // absent while renaming
-  const tag = row.querySelector<HTMLElement>(".tag")!;
-  tag.textContent = s.profileName;
-  tag.style.color = s.profileColor;
-  tag.style.borderColor = s.profileColor;
-  const folder = row.querySelector<HTMLElement>(".folder")!;
-  folder.querySelector("bdi")!.textContent = shortenHome(s.cwd);
-  folder.title = s.cwd;
-  const branch = row.querySelector<HTMLElement>(".branch")!;
-  branch.textContent = s.branch ? `⎇ ${s.branch}` : "";
-  const elapsed = row.querySelector<HTMLElement>(".elapsed")!;
-  elapsed.textContent = formatElapsed(primary.workingSince, Date.now()) ?? "";
-  row.querySelector<HTMLElement>(".row-meta")!.hidden = !s.branch && !elapsed.textContent;
+}
 
+function setRestart(row: HTMLElement, show: boolean, onClick: () => void): void {
   const existing = row.querySelector<HTMLElement>(".restart");
-  if (status === "exited" && !existing) {
+  if (show && !existing) {
     const bar = document.createElement("span");
     bar.className = "restart";
     bar.textContent = "↻";
     bar.title = "Restart in same folder";
     bar.addEventListener("click", e => {
       e.stopPropagation();
-      void restartTerminal(s, primary);
+      onClick();
     });
     row.appendChild(bar);
-  } else if (status !== "exited" && existing) {
+  } else if (!show && existing) {
     existing.remove();
   }
+}
+
+function updateProjectRow(row: HTMLElement, p: ProjectView, selected: boolean, expanded: boolean): void {
+  const status = rollupStatus(p);
+  const primary = primaryTerminal(p);
+  row.className =
+    "session-row project" +
+    (selected ? (expanded ? " group-selected" : " selected") : "") +
+    (status === "waiting" ? " waiting" : "");
+  setDot(row.querySelector<HTMLElement>(".dot")!, status);
+  const nameEl = row.querySelector<HTMLElement>(".row-name");
+  if (nameEl && nameEl.textContent !== p.name) nameEl.textContent = p.name; // absent while renaming
+  const tag = row.querySelector<HTMLElement>(".tag")!;
+  tag.textContent = p.profileName;
+  tag.style.color = p.profileColor;
+  tag.style.borderColor = p.profileColor;
+  const folder = row.querySelector<HTMLElement>(".folder")!;
+  folder.querySelector("bdi")!.textContent = shortenHome(p.cwd);
+  folder.title = p.cwd;
+  const branch = row.querySelector<HTMLElement>(".branch")!;
+  branch.textContent = p.branch ? `⎇ ${p.branch}` : "";
+  const elapsed = row.querySelector<HTMLElement>(".elapsed")!;
+  elapsed.textContent = expanded ? "" : (formatElapsed(primary.workingSince, Date.now()) ?? "");
+  row.querySelector<HTMLElement>(".row-meta")!.hidden = !p.branch && !elapsed.textContent;
+  setRestart(row, !expanded && primary.status === "exited", () => void restartTerminal(p, primary));
+}
+
+// ---- terminal rows (only when a project has two or more) ----
+
+function createTerminalRow(projectId: string, id: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "terminal-row";
+  row.dataset.id = id;
+  row.innerHTML = `<span class="dot"></span><span class="kind"></span><span class="row-name"></span><span class="elapsed"></span>`;
+  row.addEventListener("click", () => {
+    if (dragged) return;
+    select(id);
+  });
+  row.querySelector(".row-name")!.addEventListener("dblclick", e => {
+    e.stopPropagation();
+    startRename(row, name => void renameTerminal(id, name));
+  });
+  row.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    select(id);
+    const p = project(projectId);
+    const t = p?.terminals.find(x => x.id === id);
+    if (p && t) showContextMenu(e.clientX, e.clientY, terminalMenu(row, p, t));
+  });
+  return row;
+}
+
+function updateTerminalRow(row: HTMLElement, p: ProjectView, t: TerminalView, selected: boolean): void {
+  row.className = "terminal-row" + (selected ? " selected" : "") + (t.status === "waiting" ? " waiting" : "");
+  setDot(row.querySelector<HTMLElement>(".dot")!, t.status);
+  row.querySelector<HTMLElement>(".kind")!.textContent = t.kind === "claude" ? "✦" : "$";
+  const nameEl = row.querySelector<HTMLElement>(".row-name");
+  if (nameEl && nameEl.textContent !== t.name) nameEl.textContent = t.name;
+  row.querySelector<HTMLElement>(".elapsed")!.textContent = formatElapsed(t.workingSince, Date.now()) ?? "";
+  setRestart(row, t.status === "exited", () => void restartTerminal(p, t));
 }
 
 export function renderSidebar(): void {
   const list = ensureShell();
   const { projects, selectedId } = getState();
   const seen = new Set<string>();
-  projects.forEach((s, i) => {
-    seen.add(s.id);
-    let row = rows.get(s.id);
-    if (!row) {
-      row = createRow(s.id);
-      rows.set(s.id, row);
+  projects.forEach((p, i) => {
+    seen.add(p.id);
+    let group = groups.get(p.id);
+    if (!group) {
+      group = createGroup(p.id);
+      groups.set(p.id, group);
     }
-    const selected = s.terminals.some(t => t.id === selectedId);
-    updateRow(row, s, selected);
+    const expanded = p.terminals.length > 1;
+    const selectedInProject = p.terminals.some(t => t.id === selectedId);
+    updateProjectRow(group.firstElementChild as HTMLElement, p, selectedInProject, expanded);
+
+    const wanted = expanded ? p.terminals : [];
+    wanted.forEach((t, j) => {
+      let row = termRows.get(t.id);
+      if (!row) {
+        row = createTerminalRow(p.id, t.id);
+        termRows.set(t.id, row);
+      }
+      updateTerminalRow(row, p, t, t.id === selectedId);
+      const slot = group!.children[j + 1] ?? null; // index 0 is the project row
+      if (slot !== row) group!.insertBefore(row, slot);
+    });
+    for (const el of [...group.querySelectorAll<HTMLElement>(".terminal-row")]) {
+      const tid = el.dataset.id!;
+      if (!wanted.some(t => t.id === tid)) {
+        el.remove();
+        termRows.delete(tid);
+      }
+    }
     // only move nodes whose position actually changed (moving blurs inputs)
-    if (!sorting && list.children[i] !== row) list.insertBefore(row, list.children[i] ?? null);
+    if (!sorting && list.children[i] !== group) list.insertBefore(group, list.children[i] ?? null);
   });
-  for (const [id, row] of rows) {
+  for (const [id, group] of groups) {
     if (!seen.has(id)) {
-      row.remove();
-      rows.delete(id);
+      for (const el of group.querySelectorAll<HTMLElement>(".terminal-row")) termRows.delete(el.dataset.id!);
+      group.remove();
+      groups.delete(id);
     }
   }
 }
 
-// ---- drag-to-reorder (pointer based: the webview's native DnD is taken by
-// Tauri for file drops, so the HTML5 drag API never fires in-page) ----
+// ---- drag-to-reorder projects (pointer based: the webview's native DnD is
+// taken by Tauri for file drops, so the HTML5 drag API never fires in-page) ----
 const DRAG_THRESHOLD = 5;
 let dragged = false;
 let sorting = false; // renderSidebar must not move nodes while a drag is in flight
 
-function beginDrag(row: HTMLElement, id: string, startY: number): void {
+function beginDrag(group: HTMLElement, id: string, startY: number): void {
   const list = ensureShell();
   let placeholder: HTMLElement | null = null;
   let target = -1;
-  const from = getState().projects.findIndex(s => s.id === id);
+  const from = getState().projects.findIndex(p => p.id === id);
 
   const onMove = (e: MouseEvent): void => {
     const dy = e.clientY - startY;
@@ -157,16 +236,16 @@ function beginDrag(row: HTMLElement, id: string, startY: number): void {
       dragged = true;
       placeholder = document.createElement("div");
       placeholder.className = "drop-placeholder";
-      placeholder.style.height = `${row.offsetHeight}px`;
-      row.classList.add("dragging");
-      row.style.width = `${row.offsetWidth}px`;
-      list.insertBefore(placeholder, row);
+      placeholder.style.height = `${group.offsetHeight}px`;
+      group.classList.add("dragging");
+      group.style.width = `${group.offsetWidth}px`;
+      list.insertBefore(placeholder, group);
       document.body.classList.add("sorting");
       sorting = true;
     }
-    row.style.transform = `translateY(${dy}px)`;
-    const others = [...list.querySelectorAll<HTMLElement>(".session-row:not(.dragging)")];
-    const centers = others.map(r => { const b = r.getBoundingClientRect(); return b.top + b.height / 2; });
+    group.style.transform = `translateY(${dy}px)`;
+    const others = [...list.querySelectorAll<HTMLElement>(".project-group:not(.dragging)")];
+    const centers = others.map(g => { const b = g.getBoundingClientRect(); return b.top + b.height / 2; });
     target = dropIndex(centers, e.clientY);
     list.insertBefore(placeholder, others[target] ?? null);
   };
@@ -175,12 +254,12 @@ function beginDrag(row: HTMLElement, id: string, startY: number): void {
     document.removeEventListener("mouseup", onUp);
     if (!placeholder) return;
     placeholder.remove();
-    row.classList.remove("dragging");
-    row.style.transform = "";
-    row.style.width = "";
+    group.classList.remove("dragging");
+    group.style.transform = "";
+    group.style.width = "";
     document.body.classList.remove("sorting");
     sorting = false;
-    const ids = getState().projects.map(s => s.id);
+    const ids = getState().projects.map(p => p.id);
     const next = moveItem(ids, from, target);
     if (next.some((v, i) => v !== ids[i])) void reorderProjects(next);
     // let the click that follows mouseup see `dragged`, then reset
@@ -190,16 +269,29 @@ function beginDrag(row: HTMLElement, id: string, startY: number): void {
   document.addEventListener("mouseup", onUp);
 }
 
-function contextItems(row: HTMLElement, s: ProjectView) {
+// ---- context menus ----
+
+function projectMenu(row: HTMLElement, p: ProjectView) {
   return [
-    { label: "Rename…", action: () => startRename(row, s.id) },
-    { label: "Reveal folder in Finder", action: () => void revealInFinder(s.cwd) },
-    { label: "Copy folder path", action: () => void copyText(s.cwd) },
-    { label: "Close session", danger: true, action: () => void closeProjectWithConfirm(s) },
+    { label: "Rename…", action: () => startRename(row, name => void renameProject(p.id, name)) },
+    { label: "New shell here", action: () => void addTerminalAndSelect(p.id, "shell") },
+    { label: "New Claude terminal here", action: () => void addTerminalAndSelect(p.id, "claude") },
+    { label: "Reveal folder in Finder", action: () => void revealInFinder(p.cwd) },
+    { label: "Copy folder path", action: () => void copyText(p.cwd) },
+    { label: "Close project", danger: true, action: () => void closeProjectWithConfirm(p) },
   ];
 }
 
-function startRename(row: HTMLElement, id: string): void {
+function terminalMenu(row: HTMLElement, p: ProjectView, t: TerminalView) {
+  return [
+    { label: "Rename…", action: () => startRename(row, name => void renameTerminal(t.id, name)) },
+    { label: "Close terminal", danger: true, action: () => void closeTerminalWithConfirm(p, t) },
+  ];
+}
+
+// ---- inline rename (shared by project and terminal rows) ----
+
+function startRename(row: HTMLElement, save: (name: string) => void): void {
   const nameEl = row.querySelector<HTMLElement>(".row-name");
   if (!nameEl) return; // already renaming
   const current = nameEl.textContent ?? "";
@@ -210,12 +302,12 @@ function startRename(row: HTMLElement, id: string): void {
   input.focus();
   input.select();
   let done = false;
-  const finish = (save: boolean) => {
+  const finish = (commit: boolean) => {
     if (done) return;
     done = true;
     input.replaceWith(nameEl);
     const next = input.value.trim();
-    if (save && next && next !== current) void renameProject(id, next);
+    if (commit && next && next !== current) save(next);
   };
   input.addEventListener("keydown", e => {
     if (e.key === "Enter") finish(true);
@@ -224,6 +316,7 @@ function startRename(row: HTMLElement, id: string): void {
   });
   input.addEventListener("blur", () => finish(true));
   input.addEventListener("click", e => e.stopPropagation());
+  input.addEventListener("mousedown", e => e.stopPropagation());
   input.addEventListener("dblclick", e => e.stopPropagation());
 }
 
