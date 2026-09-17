@@ -1,5 +1,5 @@
 import { open as openFolder } from "@tauri-apps/plugin-dialog";
-import { listProfiles, recentFolders, startSession, Profile } from "./ipc";
+import { listProfiles, recentFolders, newProject, Profile } from "./ipc";
 import { select } from "./store";
 
 let overlay: HTMLElement | null = null;
@@ -51,7 +51,7 @@ function keyNav(box: HTMLElement, onPick: (i: number) => void): void {
 }
 
 function renderProfileStep(box: HTMLElement, profiles: Profile[]): void {
-  box.innerHTML = `<h2>New session — choose profile</h2><div class="pick-list"></div>`;
+  box.innerHTML = `<h2>New project — choose profile</h2><div class="pick-list"></div>`;
   const list = box.querySelector(".pick-list")!;
   profiles.forEach((p, i) => {
     const el = document.createElement("div");
@@ -70,7 +70,7 @@ function renderProfileStep(box: HTMLElement, profiles: Profile[]): void {
 async function renderFolderStep(box: HTMLElement, profile: Profile): Promise<void> {
   const recents = await recentFolders(profile.id);
   box.innerHTML = `<h2></h2><div class="pick-list"></div>`;
-  box.querySelector("h2")!.textContent = `New session — ${profile.name} — choose folder`;
+  box.querySelector("h2")!.textContent = `New project — ${profile.name} — choose folder`;
   const list = box.querySelector(".pick-list")!;
   const options = [...recents, "__browse__"];
   options.forEach((f, i) => {
@@ -93,10 +93,10 @@ async function renderFolderStep(box: HTMLElement, profile: Profile): Promise<voi
     }
     closeDialog();
     try {
-      const id = await startSession(profile.id, folder);
-      select(id);
+      const { terminalId } = await newProject(profile.id, folder);
+      select(terminalId);
     } catch (e) {
-      alert(`Failed to start session: ${e}`);
+      alert(`Failed to start project: ${e}`);
     }
   }
 }

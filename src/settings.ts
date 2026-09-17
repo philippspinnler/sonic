@@ -60,9 +60,9 @@ async function render(box: HTMLElement): Promise<void> {
     dir.textContent = p.configDir;
     dir.title = p.configDir;
     row.querySelector(".pr-term")!.addEventListener("click", async () => {
-      const id = await ipc.startSession(p.id, await homeDir(), null, `setup: ${p.name}`);
+      const { terminalId } = await ipc.newProject(p.id, await homeDir(), `setup: ${p.name}`);
       closeSettings();
-      select(id);
+      select(terminalId);
     });
     row.querySelector(".pr-rename")!.addEventListener("click", async () => {
       const name = prompt("Profile name", p.name);
@@ -90,9 +90,9 @@ async function render(box: HTMLElement): Promise<void> {
     const name = prompt("Profile name (e.g. acme corp)");
     if (!name) return;
     const p = await ipc.createProfile(name);
-    const id = await ipc.startSession(p.id, await homeDir(), null, `setup: ${p.name}`);
+    const { terminalId } = await ipc.newProject(p.id, await homeDir(), `setup: ${p.name}`);
     closeSettings();
-    select(id);
+    select(terminalId);
   });
   box.querySelector("#p-import")!.addEventListener("click", async () => {
     const dir = await openFolder({ directory: true, multiple: false });

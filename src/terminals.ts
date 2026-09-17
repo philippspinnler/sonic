@@ -4,7 +4,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { writeStdin, resizeSession, openUrl } from "./ipc";
+import { writeStdin, resizeTerminal, openUrl } from "./ipc";
 import { dropPointInRect, formatDroppedPaths } from "./dropPaths";
 
 interface Pane {
@@ -55,7 +55,7 @@ export function ensureTerminal(id: string): void {
     void writeStdin(id, b64encode(data));
   });
   term.onResize(({ cols, rows }) => {
-    void resizeSession(id, cols, rows);
+    void resizeTerminal(id, cols, rows);
   });
   // refit whenever the pane's actual box changes (layout shifts, sidebar,
   // banner insertion) — window resize alone misses those

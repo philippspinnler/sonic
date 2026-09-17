@@ -1,9 +1,10 @@
-import { getState, select, subscribe, formatElapsed, SessionView } from "./store";
-import { renameSession, reorderSessions, revealInFinder, copyText, startSession, closeSession } from "./ipc";
+import { getState, selectProject, subscribe, formatElapsed, ProjectView } from "./store";
+import { renameProject, reorderProjects, revealInFinder, copyText } from "./ipc";
 import { moveItem, dropIndex } from "./sortable";
 import { showContextMenu } from "./contextMenu";
-import { closeSessionWithConfirm, shortenHome } from "./actions";
+import { closeProjectWithConfirm, restartTerminal, shortenHome } from "./actions";
 import { initUpdateBanner } from "./updateBanner";
+import { primaryTerminal, rollupStatus } from "./projects";
 
 // Rows are updated in place and keyed by session id: rebuilding the DOM on
 // every store change breaks double-click (second click hits a new node) and
@@ -53,7 +54,7 @@ function createRow(id: string): HTMLElement {
     </span>`;
   row.addEventListener("click", () => {
     if (dragged) return; // a completed drag is not a click
-    if (getState().selectedId !== id) select(id);
+    selectProject(id);
   });
   row.addEventListener("mousedown", e => {
     if (e.button !== 0 || (e.target as HTMLElement).closest("input, .restart")) return;
@@ -65,21 +66,23 @@ function createRow(id: string): HTMLElement {
   });
   row.addEventListener("contextmenu", e => {
     e.preventDefault();
-    if (getState().selectedId !== id) select(id);
-    const s = getState().sessions.find(x => x.id === id);
+    if (getState().selectedId !== id) selectProject(id);
+    const s = getState().projects.find(x => x.id === id);
     if (s) showContextMenu(e.clientX, e.clientY, contextItems(row, s));
   });
   return row;
 }
 
-function updateRow(row: HTMLElement, s: SessionView, selected: boolean): void {
+function updateRow(row: HTMLElement, s: ProjectView, selected: boolean): void {
+  const primary = primaryTerminal(s);
+  const status = rollupStatus(s);
   row.className =
-    "session-row" + (selected ? " selected" : "") + (s.status === "waiting" ? " waiting" : "");
+    "session-row" + (selected ? " selected" : "") + (status === "waiting" ? " waiting" : "");
   const dot = row.querySelector<HTMLElement>(".dot")!;
-  dot.className = `dot ${s.status}`;
-  dot.title = s.status === "unknown"
+  dot.className = `dot ${status}`;
+  dot.title = status === "unknown"
     ? "Status unknown: Sonic's hooks are not installed for this profile (its settings.json could not be parsed). See Settings."
-    : s.status;
+    : status;
   const nameEl = row.querySelector<HTMLElement>(".row-name");
   if (nameEl && nameEl.textContent !== s.name) nameEl.textContent = s.name; // absent while renaming
   const tag = row.querySelector<HTMLElement>(".tag")!;
@@ -92,39 +95,38 @@ function updateRow(row: HTMLElement, s: SessionView, selected: boolean): void {
   const branch = row.querySelector<HTMLElement>(".branch")!;
   branch.textContent = s.branch ? `⎇ ${s.branch}` : "";
   const elapsed = row.querySelector<HTMLElement>(".elapsed")!;
-  elapsed.textContent = formatElapsed(s.workingSince, Date.now()) ?? "";
+  elapsed.textContent = formatElapsed(primary.workingSince, Date.now()) ?? "";
   row.querySelector<HTMLElement>(".row-meta")!.hidden = !s.branch && !elapsed.textContent;
 
   const existing = row.querySelector<HTMLElement>(".restart");
-  if (s.status === "exited" && !existing) {
+  if (status === "exited" && !existing) {
     const bar = document.createElement("span");
     bar.className = "restart";
     bar.textContent = "↻";
     bar.title = "Restart in same folder";
-    bar.addEventListener("click", async e => {
+    bar.addEventListener("click", e => {
       e.stopPropagation();
-      await closeSession(s.id);
-      const id = await startSession(s.profileId, s.cwd, null, s.name);
-      select(id);
+      void restartTerminal(s, primary);
     });
     row.appendChild(bar);
-  } else if (s.status !== "exited" && existing) {
+  } else if (status !== "exited" && existing) {
     existing.remove();
   }
 }
 
 export function renderSidebar(): void {
   const list = ensureShell();
-  const { sessions, selectedId } = getState();
+  const { projects, selectedId } = getState();
   const seen = new Set<string>();
-  sessions.forEach((s, i) => {
+  projects.forEach((s, i) => {
     seen.add(s.id);
     let row = rows.get(s.id);
     if (!row) {
       row = createRow(s.id);
       rows.set(s.id, row);
     }
-    updateRow(row, s, s.id === selectedId);
+    const selected = s.terminals.some(t => t.id === selectedId);
+    updateRow(row, s, selected);
     // only move nodes whose position actually changed (moving blurs inputs)
     if (!sorting && list.children[i] !== row) list.insertBefore(row, list.children[i] ?? null);
   });
@@ -146,7 +148,7 @@ function beginDrag(row: HTMLElement, id: string, startY: number): void {
   const list = ensureShell();
   let placeholder: HTMLElement | null = null;
   let target = -1;
-  const from = getState().sessions.findIndex(s => s.id === id);
+  const from = getState().projects.findIndex(s => s.id === id);
 
   const onMove = (e: MouseEvent): void => {
     const dy = e.clientY - startY;
@@ -178,9 +180,9 @@ function beginDrag(row: HTMLElement, id: string, startY: number): void {
     row.style.width = "";
     document.body.classList.remove("sorting");
     sorting = false;
-    const ids = getState().sessions.map(s => s.id);
+    const ids = getState().projects.map(s => s.id);
     const next = moveItem(ids, from, target);
-    if (next.some((v, i) => v !== ids[i])) void reorderSessions(next);
+    if (next.some((v, i) => v !== ids[i])) void reorderProjects(next);
     // let the click that follows mouseup see `dragged`, then reset
     setTimeout(() => { dragged = false; }, 0);
   };
@@ -188,12 +190,12 @@ function beginDrag(row: HTMLElement, id: string, startY: number): void {
   document.addEventListener("mouseup", onUp);
 }
 
-function contextItems(row: HTMLElement, s: SessionView) {
+function contextItems(row: HTMLElement, s: ProjectView) {
   return [
     { label: "Rename…", action: () => startRename(row, s.id) },
     { label: "Reveal folder in Finder", action: () => void revealInFinder(s.cwd) },
     { label: "Copy folder path", action: () => void copyText(s.cwd) },
-    { label: "Close session", danger: true, action: () => void closeSessionWithConfirm(s) },
+    { label: "Close session", danger: true, action: () => void closeProjectWithConfirm(s) },
   ];
 }
 
@@ -213,7 +215,7 @@ function startRename(row: HTMLElement, id: string): void {
     done = true;
     input.replaceWith(nameEl);
     const next = input.value.trim();
-    if (save && next && next !== current) void renameSession(id, next);
+    if (save && next && next !== current) void renameProject(id, next);
   };
   input.addEventListener("keydown", e => {
     if (e.key === "Enter") finish(true);
@@ -229,5 +231,5 @@ subscribe(renderSidebar);
 
 // keep the elapsed-time labels moving
 setInterval(() => {
-  if (getState().sessions.some(s => s.workingSince !== undefined)) renderSidebar();
+  if (getState().projects.some(p => p.terminals.some(t => t.workingSince !== undefined))) renderSidebar();
 }, 30_000);

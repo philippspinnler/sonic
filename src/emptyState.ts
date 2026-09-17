@@ -15,15 +15,15 @@ export function initEmptyState(): void {
 
 export async function render(): Promise<void> {
   if (!el) return;
-  const { sessions } = getState();
-  if (sessions.length > 0) {
+  const { projects } = getState();
+  if (projects.length > 0) {
     el.classList.remove("visible");
     return;
   }
   const profiles = await listProfiles();
   el.innerHTML = `
     <img class="empty-icon" alt="" />
-    <div class="empty-title">No sessions</div>
+    <div class="empty-title">No projects</div>
     <div class="empty-hint">Press <kbd>⌘N</kbd> to start one, or pick a profile:</div>
     <div class="empty-profiles"></div>`;
   el.querySelector<HTMLImageElement>(".empty-icon")!.src = iconUrl;

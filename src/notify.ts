@@ -1,6 +1,7 @@
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { getState, subscribe, waitingCount } from "./store";
 import { getSettings, setBadge } from "./ipc";
+import { terminalLabel } from "./projects";
 
 let lastStatuses = new Map<string, string>();
 let enabled = true;
@@ -14,19 +15,23 @@ export async function initNotifications(): Promise<void> {
 }
 
 function onChange(): void {
-  const { sessions, selectedId } = getState();
+  const { projects, selectedId } = getState();
   void setBadge(waitingCount());
-  for (const s of sessions) {
-    const prev = lastStatuses.get(s.id);
-    if (s.status === "waiting" && prev !== "waiting") {
-      const focusedOnIt = document.hasFocus() && s.id === selectedId;
-      if (enabled && !focusedOnIt) {
-        sendNotification({
-          title: `${s.name} needs your input`,
-          body: `${s.profileName} · ${s.cwd}`,
-        });
+  const next = new Map<string, string>();
+  for (const p of projects) {
+    for (const t of p.terminals) {
+      next.set(t.id, t.status);
+      const prev = lastStatuses.get(t.id);
+      if (t.status === "waiting" && prev !== "waiting") {
+        const focusedOnIt = document.hasFocus() && t.id === selectedId;
+        if (enabled && !focusedOnIt) {
+          sendNotification({
+            title: `${terminalLabel(p, t)} needs your input`,
+            body: `${p.profileName} · ${p.cwd}`,
+          });
+        }
       }
     }
   }
-  lastStatuses = new Map(sessions.map(s => [s.id, s.status]));
+  lastStatuses = next;
 }
