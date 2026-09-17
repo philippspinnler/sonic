@@ -9,6 +9,10 @@
   Sessions in a sidebar, live status, isolated profiles per account or client.
 </p>
 
+<p align="center">
+  <img src="assets/screenshot.png" width="900" alt="Sonic showing several Claude Code sessions in the sidebar with live status, and the active session's terminal">
+</p>
+
 ---
 
 Sonic is a small macOS app for people who run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) under
