@@ -22,7 +22,7 @@ pub fn run() {
             let socket = base.join("sonic.sock");
 
             let mut state = state_store::load(&base);
-            let restorable = std::mem::take(&mut state.sessions);
+            let restorable = std::mem::take(&mut state.projects);
             let auto_restore = std::mem::take(&mut state.restore_all_on_launch);
 
             app.manage(AppCtx {

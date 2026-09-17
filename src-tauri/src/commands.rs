@@ -1,7 +1,7 @@
 use crate::{
     profiles::{Profile, ProfileRegistry},
     sessions::{self, SessionProc, SpawnSpec},
-    state_store::{self, AppSettings, AppState, SessionRecord},
+    state_store::{self, AppSettings, AppState, ProjectRecord},
     status::StatusEvent,
     updater,
 };
@@ -17,7 +17,7 @@ pub struct AppCtx {
     pub registry: Mutex<ProfileRegistry>,
     pub procs: Mutex<HashMap<String, SessionProc>>,
     pub statuses: Mutex<HashMap<String, String>>,
-    pub restorable: Mutex<Vec<SessionRecord>>,
+    pub restorable: Mutex<Vec<ProjectRecord>>,
     pub auto_restore: Mutex<bool>,
     /// resolved claude binary each running session was started from
     pub session_bins: Mutex<HashMap<String, PathBuf>>,
@@ -41,7 +41,7 @@ fn views(ctx: &AppCtx) -> Vec<SessionView> {
     let reg = ctx.registry.lock().unwrap();
     let statuses = ctx.statuses.lock().unwrap();
     state
-        .sessions
+        .projects
         .iter()
         .map(|r| {
             let p = reg.get(&r.profile_id);
@@ -75,10 +75,12 @@ pub fn handle_status_event(app: &AppHandle, ev: StatusEvent) {
     }
     if let Some(cc_id) = ev.claude_session_id {
         let mut state = ctx.state.lock().unwrap();
-        if let Some(r) = state.sessions.iter_mut().find(|r| r.id == ev.sonic_session) {
-            if r.claude_session_id.as_deref() != Some(cc_id.as_str()) {
-                r.claude_session_id = Some(cc_id);
-                let _ = state_store::save(&ctx.base, &state);
+        if let Some(r) = state.projects.iter_mut().find(|r| r.id == ev.sonic_session) {
+            if let Some(t) = r.terminals.first_mut() {
+                if t.claude_session_id.as_deref() != Some(cc_id.as_str()) {
+                    t.claude_session_id = Some(cc_id);
+                    let _ = state_store::save(&ctx.base, &state);
+                }
             }
         }
     }
@@ -115,7 +117,7 @@ pub fn update_profile(ctx: State<AppCtx>, profile: Profile) -> Result<(), String
 #[tauri::command]
 pub fn delete_profile(ctx: State<AppCtx>, id: String) -> Result<(), String> {
     let state = ctx.state.lock().unwrap();
-    if state.sessions.iter().any(|s| s.profile_id == id) {
+    if state.projects.iter().any(|s| s.profile_id == id) {
         return Err("Close this profile's sessions first".into());
     }
     drop(state);
@@ -173,17 +175,24 @@ pub fn start_session(
         .file_name()
         .map(|f| f.to_string_lossy().into_owned())
         .unwrap_or_else(|| cwd.clone());
-    let record = SessionRecord {
+    let created_at = chrono::Utc::now().to_rfc3339();
+    let record = ProjectRecord {
         id: id.clone(),
         name: name.unwrap_or(default_name),
         profile_id: profile_id.clone(),
         cwd: cwd.clone(),
-        claude_session_id: resume_id,
-        created_at: chrono::Utc::now().to_rfc3339(),
+        created_at: created_at.clone(),
+        terminals: vec![state_store::TerminalRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            kind: state_store::TerminalKind::Claude,
+            name: None,
+            claude_session_id: resume_id,
+            created_at,
+        }],
     };
     {
         let mut state = ctx.state.lock().unwrap();
-        state.sessions.push(record);
+        state.projects.push(record);
         state_store::push_recent(&mut state, &profile_id, &cwd);
         let _ = state_store::save(&ctx.base, &state);
     }
@@ -225,7 +234,7 @@ pub fn resize_session(ctx: State<AppCtx>, id: String, cols: u16, rows: u16) {
 #[tauri::command]
 pub fn rename_session(app: AppHandle, ctx: State<AppCtx>, id: String, name: String) {
     let mut state = ctx.state.lock().unwrap();
-    if let Some(r) = state.sessions.iter_mut().find(|r| r.id == id) {
+    if let Some(r) = state.projects.iter_mut().find(|r| r.id == id) {
         r.name = name;
     }
     let _ = state_store::save(&ctx.base, &state);
@@ -238,7 +247,7 @@ pub fn rename_session(app: AppHandle, ctx: State<AppCtx>, id: String, name: Stri
 #[tauri::command]
 pub fn reorder_sessions(app: AppHandle, ctx: State<AppCtx>, ids: Vec<String>) {
     let mut state = ctx.state.lock().unwrap();
-    let mut rest = std::mem::take(&mut state.sessions);
+    let mut rest = std::mem::take(&mut state.projects);
     let mut ordered = Vec::with_capacity(rest.len());
     for id in &ids {
         if let Some(i) = rest.iter().position(|r| &r.id == id) {
@@ -246,7 +255,7 @@ pub fn reorder_sessions(app: AppHandle, ctx: State<AppCtx>, ids: Vec<String>) {
         }
     }
     ordered.extend(rest);
-    state.sessions = ordered;
+    state.projects = ordered;
     let _ = state_store::save(&ctx.base, &state);
     drop(state);
     emit_sessions(&app);
@@ -260,7 +269,7 @@ pub fn close_session(app: AppHandle, ctx: State<AppCtx>, id: String) {
     ctx.statuses.lock().unwrap().remove(&id);
     ctx.session_bins.lock().unwrap().remove(&id);
     let mut state = ctx.state.lock().unwrap();
-    state.sessions.retain(|r| r.id != id);
+    state.projects.retain(|r| r.id != id);
     let _ = state_store::save(&ctx.base, &state);
     drop(state);
     emit_sessions(&app);
@@ -272,7 +281,7 @@ pub fn recent_folders(ctx: State<AppCtx>, profile_id: String) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn previous_sessions(ctx: State<AppCtx>) -> Vec<SessionRecord> {
+pub fn previous_sessions(ctx: State<AppCtx>) -> Vec<ProjectRecord> {
     ctx.restorable.lock().unwrap().clone()
 }
 
