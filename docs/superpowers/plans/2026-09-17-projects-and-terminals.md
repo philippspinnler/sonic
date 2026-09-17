@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Commits are authored as Philipp Spinnler <philipp@spinnler.ch>; no Co-Authored-By or Claude-Session trailers, no mention of Claude in commit messages beyond the product feature name ("Claude terminal").
+- Commits are authored by the repository owner with no attribution trailers, and mention Claude only as the product feature name ("Claude terminal").
 - `state.json` version becomes `2`. Version 1 files (or files without a version) migrate on load; nothing else in the file format changes.
 - A project always has at least one terminal; creating a project creates its Claude terminal in the same operation.
 - `SONIC_SESSION_ID` carries the terminal id. The hook script and socket JSON are unchanged.
@@ -2390,7 +2390,7 @@ Replace the Keyboard table with:
 
 - [ ] **Step 2: Scan for leaked personal data and commit**
 
-Run: `git grep -nE "philipp@|/Users/philipp|hf ict|sunrise|eo-guide" -- . ':!package-lock.json'`
+Run: `git grep -nE "/Users/[a-z]+|@[a-z-]+\.(ch|com)" -- . ':!package-lock.json'` (home paths, e-mail addresses)
 Expected: no output.
 
 ```bash
