@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProjectView, TerminalView, TerminalKind, Status } from "./store";
+import type { Placement } from "./projects";
 
 export type { ProjectView, TerminalView, TerminalKind };
 
@@ -29,6 +30,7 @@ export interface ProjectRecord {
   cwd: string;
   created_at: string;
   terminals: TerminalRecord[];
+  folder: string | null;
 }
 
 export interface AppSettings {
@@ -48,14 +50,20 @@ export const importProfile = (name: string, dir: string) => invoke<Profile>("imp
 export const updateProfile = (profile: Profile) => invoke<void>("update_profile", { profile });
 export const deleteProfile = (id: string) => invoke<void>("delete_profile", { id });
 export const listProjects = () => invoke<ProjectView[]>("list_projects");
-export const newProject = (profileId: string, cwd: string, name?: string | null, resumeId?: string | null) =>
-  invoke<NewProject>("new_project", { profileId, cwd, name: name ?? null, resumeId: resumeId ?? null });
+export const newProject = (
+  profileId: string, cwd: string, name?: string | null, resumeId?: string | null, folder?: string | null,
+) => invoke<NewProject>("new_project", { profileId, cwd, name: name ?? null, resumeId: resumeId ?? null, folder: folder ?? null });
 export const addTerminal = (projectId: string, kind: TerminalKind, resumeId?: string | null) =>
   invoke<string>("add_terminal", { projectId, kind, resumeId: resumeId ?? null });
 export const writeStdin = (id: string, dataB64: string) => invoke<void>("write_stdin", { id, dataB64 });
 export const resizeTerminal = (id: string, cols: number, rows: number) =>
   invoke<void>("resize_terminal", { id, cols, rows });
-export const reorderProjects = (ids: string[]) => invoke<void>("reorder_projects", { ids });
+export const arrangeProjects = (layout: Placement[]) => invoke<void>("arrange_projects", { layout });
+export const newFolder = (projectId: string, name: string) => invoke<string>("new_folder", { projectId, name });
+export const renameFolder = (id: string, name: string) => invoke<void>("rename_folder", { id, name });
+export const setFolderCollapsed = (id: string, collapsed: boolean) =>
+  invoke<void>("set_folder_collapsed", { id, collapsed });
+export const removeFolder = (id: string) => invoke<void>("remove_folder", { id });
 export const renameProject = (id: string, name: string) => invoke<void>("rename_project", { id, name });
 export const renameTerminal = (id: string, name: string) => invoke<void>("rename_terminal", { id, name });
 export const closeTerminal = (id: string) => invoke<void>("close_terminal", { id });

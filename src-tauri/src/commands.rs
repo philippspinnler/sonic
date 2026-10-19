@@ -1,12 +1,12 @@
 use crate::{
     profiles::{Profile, ProfileRegistry},
     sessions::{self, SessionProc, SpawnCommand, SpawnSpec},
-    state_store::{self, AppSettings, AppState, ProjectRecord, TerminalKind, TerminalRecord},
+    state_store::{self, AppSettings, AppState, FolderRecord, ProjectRecord, TerminalKind, TerminalRecord},
     status::StatusEvent,
     updater,
 };
 use base64::Engine;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, sync::Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -45,6 +45,7 @@ pub struct ProjectView {
     pub cwd: String,
     pub branch: Option<String>,
     pub terminals: Vec<TerminalView>,
+    pub folder: Option<FolderRecord>,
 }
 
 #[derive(Serialize, Clone)]
@@ -81,6 +82,7 @@ fn views(ctx: &AppCtx) -> Vec<ProjectView> {
                         status: statuses.get(&t.id).cloned().unwrap_or("idle".into()),
                     })
                     .collect(),
+                folder: p.folder.as_ref().and_then(|id| state.folders.iter().find(|f| &f.id == id)).cloned(),
             }
         })
         .collect()
@@ -231,6 +233,7 @@ pub fn new_project(
     cwd: String,
     name: Option<String>,
     resume_id: Option<String>,
+    folder: Option<String>,
 ) -> Result<NewProject, String> {
     let profile = ctx.registry.lock().unwrap().get(&profile_id).ok_or("unknown profile")?;
     let term = spawn_terminal(&app, &ctx, &profile, &cwd, TerminalKind::Claude, resume_id)?;
@@ -238,17 +241,19 @@ pub fn new_project(
         .file_name()
         .map(|f| f.to_string_lossy().into_owned())
         .unwrap_or_else(|| cwd.clone());
-    let project = ProjectRecord {
+    let mut project = ProjectRecord {
         id: uuid::Uuid::new_v4().to_string(),
         name: name.unwrap_or(default_name),
         profile_id: profile_id.clone(),
         cwd: cwd.clone(),
         created_at: chrono::Utc::now().to_rfc3339(),
         terminals: vec![term.clone()],
+        folder: None,
     };
     let project_id = project.id.clone();
     {
         let mut state = ctx.state.lock().unwrap();
+        project.folder = folder.filter(|id| state.folders.iter().any(|f| &f.id == id));
         state.projects.push(project);
         state_store::push_recent(&mut state, &profile_id, &cwd);
         let _ = state_store::save(&ctx.base, &state);
@@ -342,20 +347,76 @@ pub fn rename_terminal(app: AppHandle, ctx: State<AppCtx>, id: String, name: Str
     emit_projects(&app);
 }
 
-/// Reorder projects to match `ids`; unknown ids are ignored and projects not
-/// mentioned keep their relative order at the end.
+#[derive(Deserialize)]
+pub struct Placement {
+    id: String,
+    folder: Option<String>,
+}
+
+/// Put projects in the order of `layout`, each in its given folder (None = loose).
+/// Unknown ids are ignored; projects not mentioned keep their relative order at the end.
 #[tauri::command]
-pub fn reorder_projects(app: AppHandle, ctx: State<AppCtx>, ids: Vec<String>) {
+pub fn arrange_projects(app: AppHandle, ctx: State<AppCtx>, layout: Vec<Placement>) {
     let mut state = ctx.state.lock().unwrap();
     let mut rest = std::mem::take(&mut state.projects);
     let mut ordered = Vec::with_capacity(rest.len());
-    for id in &ids {
-        if let Some(i) = rest.iter().position(|p| &p.id == id) {
-            ordered.push(rest.remove(i));
+    for pl in layout {
+        if let Some(i) = rest.iter().position(|p| p.id == pl.id) {
+            let mut p = rest.remove(i);
+            p.folder = pl.folder.filter(|id| state.folders.iter().any(|f| &f.id == id));
+            ordered.push(p);
         }
     }
     ordered.extend(rest);
     state.projects = ordered;
+    let _ = state_store::save(&ctx.base, &state);
+    drop(state);
+    emit_projects(&app);
+}
+
+/// Create a folder holding `project_id`; returns the folder id.
+#[tauri::command]
+pub fn new_folder(app: AppHandle, ctx: State<AppCtx>, project_id: String, name: String) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut state = ctx.state.lock().unwrap();
+    state.folders.push(FolderRecord { id: id.clone(), name, collapsed: false });
+    if let Some(p) = state.projects.iter_mut().find(|p| p.id == project_id) {
+        p.folder = Some(id.clone());
+    }
+    let _ = state_store::save(&ctx.base, &state);
+    drop(state);
+    emit_projects(&app);
+    id
+}
+
+fn update_folder(app: &AppHandle, ctx: &AppCtx, id: &str, f: impl FnOnce(&mut FolderRecord)) {
+    let mut state = ctx.state.lock().unwrap();
+    if let Some(folder) = state.folders.iter_mut().find(|x| x.id == id) {
+        f(folder);
+    }
+    let _ = state_store::save(&ctx.base, &state);
+    drop(state);
+    emit_projects(app);
+}
+
+#[tauri::command]
+pub fn rename_folder(app: AppHandle, ctx: State<AppCtx>, id: String, name: String) {
+    update_folder(&app, &ctx, &id, |f| f.name = name);
+}
+
+#[tauri::command]
+pub fn set_folder_collapsed(app: AppHandle, ctx: State<AppCtx>, id: String, collapsed: bool) {
+    update_folder(&app, &ctx, &id, |f| f.collapsed = collapsed);
+}
+
+/// Delete a folder; its projects stay open and become loose.
+#[tauri::command]
+pub fn remove_folder(app: AppHandle, ctx: State<AppCtx>, id: String) {
+    let mut state = ctx.state.lock().unwrap();
+    state.folders.retain(|f| f.id != id);
+    for p in state.projects.iter_mut().filter(|p| p.folder.as_ref() == Some(&id)) {
+        p.folder = None;
+    }
     let _ = state_store::save(&ctx.base, &state);
     drop(state);
     emit_projects(&app);

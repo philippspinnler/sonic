@@ -35,6 +35,10 @@ terminal tabs, you get:
 - **`⌘N` to start a project**: pick a profile, pick a folder (recents or a native picker), go
 - **A sidebar you can arrange**: drag projects into the order you want, double-click to rename a
   project or terminal, right-click for the project and terminal menus
+- **Folders in the sidebar**: right-click a project → *New sidebar folder…* to group related projects
+  (say, everything homelab). Drag projects onto a folder's header to add them, drag them out to make
+  them loose again, click the header to collapse it. A collapsed folder shows the most urgent status
+  of the projects inside it
 - **Profiles managed in-app**: create an isolated profile and log in right there, or import the
   config dirs you already have
 - **macOS notifications and a dock badge** when a terminal you're not looking at needs you
@@ -126,12 +130,12 @@ cargo run --example import_profiles -- "private=$HOME/.claude-private" "work=$HO
 | `⌘⇧T` | New Claude terminal in the selected project |
 | `⌘W` | Close the selected terminal (asks first if it's working); the last one closes the project |
 | `⌘⇧W` | Close the selected project |
-| `⌘1` … `⌘9` | Jump to the n-th project |
+| `⌘1` … `⌘9` | Jump to the n-th project shown in the sidebar (projects in collapsed folders are skipped) |
 | `⌘⇧]` / `⌘⇧[` | Next / previous terminal in the project |
 | `⌘F` | Find in the terminal |
 | `⌘,` | Settings: profiles, `claude` binary path, notifications |
 | double-click a name | Rename the project or terminal |
-| right-click a row | Project menu: new shell / Claude terminal here, reveal folder, close; terminal menu: rename, close |
+| right-click a row | Project menu: new shell / Claude terminal here, reveal folder, new sidebar folder, close; terminal menu: rename, close; folder menu: rename, remove |
 
 Drag the sidebar's right edge to resize it.
 

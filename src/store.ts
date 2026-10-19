@@ -12,6 +12,12 @@ export interface TerminalView {
   workingSince?: number;
 }
 
+export interface Folder {
+  id: string;
+  name: string;
+  collapsed: boolean;
+}
+
 export interface ProjectView {
   id: string;
   name: string;
@@ -21,6 +27,7 @@ export interface ProjectView {
   cwd: string;
   branch: string | null;
   terminals: TerminalView[];
+  folder: Folder | null;
 }
 
 interface State {

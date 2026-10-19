@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { primaryTerminal, rollupStatus, cycleTerminal, terminalLabel } from "./projects";
-import type { ProjectView, TerminalView, Status, TerminalKind } from "./store";
+import {
+  primaryTerminal, rollupStatus, cycleTerminal, terminalLabel, displayOrder, visibleProjects, folderStatus, layoutOf,
+} from "./projects";
+import type { ProjectView, TerminalView, Status, TerminalKind, Folder } from "./store";
 
 const t = (id: string, kind: TerminalKind, status: Status = "idle"): TerminalView => ({ id, kind, name: id, status });
 const p = (terminals: TerminalView[]): ProjectView => ({
-  id: "p", name: "proj", profileId: "x", profileName: "X", profileColor: "#fff", cwd: "/w", branch: null, terminals,
+  id: "p", name: "proj", profileId: "x", profileName: "X", profileColor: "#fff", cwd: "/w", branch: null, terminals, folder: null,
 });
 
 describe("primaryTerminal", () => {
@@ -52,5 +54,26 @@ describe("terminalLabel", () => {
     expect(terminalLabel(one, one.terminals[0])).toBe("proj");
     const two = p([t("a", "claude"), t("b", "shell")]);
     expect(terminalLabel(two, two.terminals[1])).toBe("proj · b");
+  });
+});
+
+describe("folders", () => {
+  const home: Folder = { id: "home", name: "homelab", collapsed: true };
+  const at = (id: string, folder: Folder | null, status: Status = "idle"): ProjectView =>
+    ({ ...p([t(`${id}-c`, "claude", status)]), id, folder });
+  // state order a, h1, b, h2: the folder sits at h1 and pulls h2 up behind it
+  const list = [at("a", null), at("h1", home), at("b", null), at("h2", home, "waiting")];
+
+  it("groups a folder's projects where its first one is", () => {
+    expect(displayOrder(list).map(x => x.id)).toEqual(["a", "h1", "h2", "b"]);
+    expect(layoutOf(list)).toEqual([
+      { id: "a", folder: null }, { id: "h1", folder: "home" }, { id: "h2", folder: "home" }, { id: "b", folder: null },
+    ]);
+  });
+  it("skips projects in collapsed folders for ⌘1…⌘9", () => {
+    expect(visibleProjects(list).map(x => x.id)).toEqual(["a", "b"]);
+  });
+  it("shows the most urgent project status on the folder", () => {
+    expect(folderStatus([list[1], list[3]])).toBe("waiting");
   });
 });

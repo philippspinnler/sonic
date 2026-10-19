@@ -9,7 +9,7 @@ import { initNotifications } from "./notify";
 import { maybeRestore } from "./restore";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { closeTerminalWithConfirm, closeProjectWithConfirm, addTerminalAndSelect } from "./actions";
-import { cycleTerminal } from "./projects";
+import { cycleTerminal, visibleProjects } from "./projects";
 import { initSidebarResizer } from "./layout";
 import { initEmptyState } from "./emptyState";
 import { ask } from "@tauri-apps/plugin-dialog";
@@ -109,7 +109,7 @@ window.addEventListener("keydown", e => {
     return;
   }
   if (/^[1-9]$/.test(e.key)) {
-    const p = getState().projects[+e.key - 1];
+    const p = visibleProjects(getState().projects)[+e.key - 1];
     if (p) {
       selectProject(p.id);
       e.preventDefault();

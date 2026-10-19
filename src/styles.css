@@ -122,3 +122,13 @@ body.resizing #main { pointer-events: none; }
 
 .banner { position: fixed; top: 0; left: 240px; right: 0; background: #3b2d1f;
   color: var(--waiting); padding: 6px 12px; font-size: 12px; z-index: 20; }
+
+.folder-header { display: flex; gap: 6px; align-items: center; padding: 10px 12px 4px; cursor: pointer;
+  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.folder-header:hover { color: var(--fg); }
+.folder-header .chev { width: 10px; font-size: 10px; flex: none; }
+.folder-header .count { flex: 1; }
+.folder-header .rename-input { text-transform: none; letter-spacing: normal; }
+.folder-header.drop-into { color: var(--fg); border-radius: 6px; box-shadow: inset 0 0 0 1px var(--accent); }
+.folder-group.collapsed > .project-group { display: none; }
+.folder-group.dragging { position: relative; z-index: 10; opacity: 0.85; background: #292e42; box-shadow: 0 4px 12px #0008; pointer-events: none; }

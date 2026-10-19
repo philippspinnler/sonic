@@ -5,7 +5,9 @@ import type { ProjectRecord } from "./ipc";
  *  every other terminal is added after it. Shells come back fresh. */
 async function restoreProject(r: ProjectRecord): Promise<void> {
   const first = r.terminals.find(t => t.kind === "claude");
-  const { projectId, terminalId } = await ipc.newProject(r.profile_id, r.cwd, r.name, first?.claude_session_id ?? null);
+  const { projectId, terminalId } = await ipc.newProject(
+    r.profile_id, r.cwd, r.name, first?.claude_session_id ?? null, r.folder,
+  );
   if (first?.name) await ipc.renameTerminal(terminalId, first.name);
   for (const t of r.terminals) {
     if (t === first) continue;

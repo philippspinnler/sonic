@@ -1,20 +1,26 @@
-import { getState, select, selectProject, subscribe, formatElapsed, ProjectView, TerminalView } from "./store";
-import { renameProject, renameTerminal, reorderProjects, revealInFinder, copyText } from "./ipc";
-import { moveItem, dropIndex } from "./sortable";
+import { getState, select, selectProject, subscribe, formatElapsed, Folder, ProjectView, TerminalView } from "./store";
+import {
+  renameProject, renameTerminal, arrangeProjects, revealInFinder, copyText,
+  newFolder, renameFolder, setFolderCollapsed, removeFolder,
+} from "./ipc";
+import { dropIndex } from "./sortable";
 import { showContextMenu } from "./contextMenu";
 import {
   closeProjectWithConfirm, closeTerminalWithConfirm, addTerminalAndSelect, restartTerminal, shortenHome,
 } from "./actions";
-import { primaryTerminal, rollupStatus } from "./projects";
+import { primaryTerminal, rollupStatus, displayOrder, folderStatus, layoutOf, Placement } from "./projects";
 import { initUpdateBanner } from "./updateBanner";
 
 // Each project is a `.project-group`: its project row followed by one
-// `.terminal-row` per terminal when there are two or more. Nodes are updated
+// `.terminal-row` per terminal when there are two or more. A folder is a
+// `.folder-group`: its `.folder-header` followed by its projects' groups;
+// loose projects sit directly in the list. Nodes are updated
 // in place and keyed by id: rebuilding the DOM on every store change breaks
 // double-click (second click hits a new node) and would destroy an
 // in-progress rename input on any status event.
 const groups = new Map<string, HTMLElement>();
 const termRows = new Map<string, HTMLElement>();
+const folderEls = new Map<string, HTMLElement>();
 let list: HTMLElement | null = null;
 
 function ensureShell(): HTMLElement {
@@ -72,7 +78,7 @@ function createGroup(id: string): HTMLElement {
   });
   row.addEventListener("mousedown", e => {
     if (e.button !== 0 || (e.target as HTMLElement).closest("input, .restart")) return;
-    beginDrag(group, id, e.clientY);
+    beginDrag(group, e.clientY);
   });
   row.querySelector(".row-name")!.addEventListener("dblclick", e => {
     e.stopPropagation();
@@ -137,6 +143,75 @@ function updateProjectRow(row: HTMLElement, p: ProjectView, selected: boolean, e
   setRestart(row, !expanded && primary.status === "exited", () => void restartTerminal(p, primary));
 }
 
+// ---- folders ----
+
+function createFolderGroup(id: string): HTMLElement {
+  const fg = document.createElement("div");
+  fg.className = "folder-group";
+  fg.dataset.id = id;
+  const header = document.createElement("div");
+  header.className = "folder-header";
+  header.innerHTML = `<span class="chev"></span><span class="row-name"></span><span class="count"></span><span class="dot"></span>`;
+  // a click toggles, so renaming lives in the menu (a double-click would toggle twice)
+  header.addEventListener("click", () => {
+    if (dragged || header.querySelector("input")) return;
+    void setFolderCollapsed(id, !fg.classList.contains("collapsed"));
+  });
+  header.addEventListener("mousedown", e => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("input")) return;
+    beginDrag(fg, e.clientY);
+  });
+  header.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    showContextMenu(e.clientX, e.clientY, [
+      { label: "Rename…", action: () => startRename(header, name => void renameFolder(id, name)) },
+      { label: "Remove folder (keeps its projects)", action: () => void removeFolder(id) },
+    ]);
+  });
+  fg.appendChild(header);
+  return fg;
+}
+
+function updateFolderGroup(fg: HTMLElement, f: Folder, members: ProjectView[]): void {
+  fg.classList.toggle("collapsed", f.collapsed);
+  const header = fg.firstElementChild as HTMLElement;
+  header.querySelector(".chev")!.textContent = f.collapsed ? "▸" : "▾";
+  const nameEl = header.querySelector<HTMLElement>(".row-name");
+  if (nameEl && nameEl.textContent !== f.name) nameEl.textContent = f.name; // absent while renaming
+  header.querySelector(".count")!.textContent = `· ${members.length}`;
+  const dot = header.querySelector<HTMLElement>(".dot")!;
+  setDot(dot, folderStatus(members));
+  dot.hidden = !f.collapsed; // open folders show their projects' own dots
+}
+
+/** A folder made from the menu opens in rename mode once its header exists. */
+let renameOnCreate: string | null = null;
+
+function renamePendingFolder(): void {
+  const fg = renameOnCreate ? folderEls.get(renameOnCreate) : undefined;
+  if (!fg?.isConnected) return;
+  const id = renameOnCreate!;
+  renameOnCreate = null;
+  startRename(fg.firstElementChild as HTMLElement, name => void renameFolder(id, name));
+}
+
+async function makeFolder(p: ProjectView): Promise<void> {
+  renameOnCreate = await newFolder(p.id, "New folder");
+  renamePendingFolder();
+}
+
+function moveToFolder(id: string, folder: string | null): void {
+  void arrangeProjects(layoutOf(getState().projects).map(x => (x.id === id ? { id, folder } : x)));
+}
+
+/** Put `els` into `parent` in order from child index `offset`, moving only what changed (moving blurs inputs). */
+function place(parent: HTMLElement, els: HTMLElement[], offset: number): void {
+  els.forEach((el, i) => {
+    const slot = parent.children[i + offset] ?? null;
+    if (slot !== el) parent.insertBefore(el, slot);
+  });
+}
+
 // ---- terminal rows (only when a project has two or more) ----
 
 function createTerminalRow(projectId: string, id: string): HTMLElement {
@@ -176,9 +251,11 @@ export function renderSidebar(): void {
   const list = ensureShell();
   const { projects, selectedId } = getState();
   const seen = new Set<string>();
-  projects.forEach((p, i) => {
+  const top: HTMLElement[] = []; // the list's children, in order
+  const folders = new Map<string, { folder: Folder; members: ProjectView[]; els: HTMLElement[] }>();
+  for (const p of displayOrder(projects)) {
     seen.add(p.id);
-    if (p.terminals.length === 0) return;
+    if (p.terminals.length === 0) continue;
     let group = groups.get(p.id);
     if (!group) {
       group = createGroup(p.id);
@@ -206,9 +283,30 @@ export function renderSidebar(): void {
         termRows.delete(tid);
       }
     }
-    // only move nodes whose position actually changed (moving blurs inputs)
-    if (!sorting && list.children[i] !== group) list.insertBefore(group, list.children[i] ?? null);
-  });
+
+    if (!p.folder) {
+      top.push(group);
+      continue;
+    }
+    let f = folders.get(p.folder.id);
+    if (!f) {
+      let fg = folderEls.get(p.folder.id);
+      if (!fg) {
+        fg = createFolderGroup(p.folder.id);
+        folderEls.set(p.folder.id, fg);
+      }
+      top.push(fg);
+      f = { folder: p.folder, members: [], els: [] };
+      folders.set(p.folder.id, f);
+    }
+    f.members.push(p);
+    f.els.push(group);
+  }
+  for (const [id, f] of folders) updateFolderGroup(folderEls.get(id)!, f.folder, f.members);
+  if (!sorting) {
+    place(list, top, 0);
+    for (const [id, f] of folders) place(folderEls.get(id)!, f.els, 1); // index 0 is the header
+  }
   for (const [id, group] of groups) {
     if (!seen.has(id)) {
       for (const el of group.querySelectorAll<HTMLElement>(".terminal-row")) termRows.delete(el.dataset.id!);
@@ -216,19 +314,43 @@ export function renderSidebar(): void {
       groups.delete(id);
     }
   }
+  // after placing, so projects leaving a removed folder are already out of it
+  for (const [id, fg] of folderEls) {
+    if (!folders.has(id) && !sorting) {
+      fg.remove();
+      folderEls.delete(id);
+    }
+  }
+  renamePendingFolder();
 }
 
-// ---- drag-to-reorder projects (pointer based: the webview's native DnD is
+// ---- drag-to-reorder projects and folders (pointer based: the webview's native DnD is
 // taken by Tauri for file drops, so the HTML5 drag API never fires in-page) ----
 const DRAG_THRESHOLD = 5;
 let dragged = false;
 let sorting = false; // renderSidebar must not move nodes while a drag is in flight
 
-function beginDrag(group: HTMLElement, id: string, startY: number): void {
+/** Read the sidebar back as a layout, with `moving` taken out and put where `slot` is. */
+function domLayout(list: HTMLElement, moving: HTMLElement, slot: HTMLElement): Placement[] {
+  const out: Placement[] = [];
+  const walk = (parent: Element, folder: string | null): void => {
+    for (const c of parent.children) {
+      if (c === moving) continue;
+      const node = (c === slot ? moving : c) as HTMLElement;
+      if (node.classList.contains("folder-group")) walk(node, node.dataset.id!);
+      else if (node.classList.contains("project-group")) out.push({ id: node.dataset.id!, folder });
+    }
+  };
+  walk(list, null);
+  return out;
+}
+
+/** Drag a `.project-group` (anywhere, or onto a folder header to join it) or a whole `.folder-group`. */
+function beginDrag(el: HTMLElement, startY: number): void {
   const list = ensureShell();
+  const isFolder = el.classList.contains("folder-group");
   let placeholder: HTMLElement | null = null;
-  let target = -1;
-  const from = getState().projects.findIndex(p => p.id === id);
+  let into: HTMLElement | null = null; // the folder header a project is held over
 
   const onMove = (e: MouseEvent): void => {
     const dy = e.clientY - startY;
@@ -237,32 +359,49 @@ function beginDrag(group: HTMLElement, id: string, startY: number): void {
       dragged = true;
       placeholder = document.createElement("div");
       placeholder.className = "drop-placeholder";
-      placeholder.style.height = `${group.offsetHeight}px`;
-      group.classList.add("dragging");
-      group.style.width = `${group.offsetWidth}px`;
-      list.insertBefore(placeholder, group);
+      placeholder.style.height = `${el.offsetHeight}px`;
+      el.classList.add("dragging");
+      el.style.width = `${el.offsetWidth}px`;
+      el.parentElement!.insertBefore(placeholder, el);
       document.body.classList.add("sorting");
       sorting = true;
     }
-    group.style.transform = `translateY(${dy}px)`;
-    const others = [...list.querySelectorAll<HTMLElement>(".project-group:not(.dragging)")];
-    const centers = others.map(g => { const b = g.getBoundingClientRect(); return b.top + b.height / 2; });
-    target = dropIndex(centers, e.clientY);
-    list.insertBefore(placeholder, others[target] ?? null);
+    el.style.transform = `translateY(${dy}px)`;
+    into?.classList.remove("drop-into");
+    into = isFolder ? null : [...list.querySelectorAll<HTMLElement>(".folder-header")].find(h => {
+      const b = h.getBoundingClientRect();
+      return e.clientY >= b.top && e.clientY < b.bottom;
+    }) ?? null;
+    if (into) {
+      into.classList.add("drop-into");
+      into.parentElement!.appendChild(placeholder); // joins at the end, even when collapsed
+      return;
+    }
+    // a folder moves among the top-level items; a project among every visible project and header
+    const targets = isFolder
+      ? [...list.children].filter(c => c !== el && c !== placeholder) as HTMLElement[]
+      : [...list.querySelectorAll<HTMLElement>(".project-group:not(.dragging), .folder-header")]
+          .filter(x => x.offsetHeight > 0);
+    const centers = targets.map(g => { const b = g.getBoundingClientRect(); return b.top + b.height / 2; });
+    const t = targets[dropIndex(centers, e.clientY)];
+    if (!t) list.appendChild(placeholder);
+    else if (t.classList.contains("folder-header")) list.insertBefore(placeholder, t.parentElement); // above the folder, loose
+    else t.parentElement!.insertBefore(placeholder, t);
   };
   const onUp = (): void => {
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
     if (!placeholder) return;
+    const next = domLayout(list, el, placeholder);
+    into?.classList.remove("drop-into");
     placeholder.remove();
-    group.classList.remove("dragging");
-    group.style.transform = "";
-    group.style.width = "";
+    el.classList.remove("dragging");
+    el.style.transform = "";
+    el.style.width = "";
     document.body.classList.remove("sorting");
     sorting = false;
-    const ids = getState().projects.map(p => p.id);
-    const next = moveItem(ids, from, target);
-    if (next.some((v, i) => v !== ids[i])) void reorderProjects(next);
+    if (JSON.stringify(next) !== JSON.stringify(layoutOf(getState().projects))) void arrangeProjects(next);
+    renderSidebar(); // put nodes back where the store says until the new layout arrives
     // let the click that follows mouseup see `dragged`, then reset
     setTimeout(() => { dragged = false; }, 0);
   };
@@ -279,6 +418,8 @@ function projectMenu(row: HTMLElement, p: ProjectView) {
     { label: "New Claude terminal here", action: () => void addTerminalAndSelect(p.id, "claude") },
     { label: "Reveal folder in Finder", action: () => void revealInFinder(p.cwd) },
     { label: "Copy folder path", action: () => void copyText(p.cwd) },
+    { label: "New sidebar folder…", action: () => void makeFolder(p) },
+    ...(p.folder ? [{ label: `Remove from “${p.folder.name}”`, action: () => moveToFolder(p.id, null) }] : []),
     { label: "Close project", danger: true, action: () => void closeProjectWithConfirm(p) },
   ];
 }

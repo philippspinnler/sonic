@@ -6,7 +6,7 @@ import {
 
 const t = (id: string, kind: TerminalKind = "claude", status: Status = "idle"): TerminalView => ({ id, kind, name: id, status });
 const pv = (id: string, terminals: TerminalView[]): ProjectView => ({
-  id, name: id, profileId: "p", profileName: "P", profileColor: "#fff", cwd: "/x", branch: null, terminals,
+  id, name: id, profileId: "p", profileName: "P", profileColor: "#fff", cwd: "/x", branch: null, terminals, folder: null,
 });
 
 beforeEach(() => _reset());

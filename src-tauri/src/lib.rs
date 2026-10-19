@@ -23,6 +23,8 @@ pub fn run() {
 
             let mut state = state_store::load(&base);
             let restorable = std::mem::take(&mut state.projects);
+            // folders left empty last session go; the rest wait for their projects' restore
+            state.prune_folders(&restorable);
             let auto_restore = std::mem::take(&mut state.restore_all_on_launch);
 
             app.manage(AppCtx {
@@ -104,7 +106,11 @@ pub fn run() {
             commands::resize_terminal,
             commands::rename_project,
             commands::rename_terminal,
-            commands::reorder_projects,
+            commands::arrange_projects,
+            commands::new_folder,
+            commands::rename_folder,
+            commands::set_folder_collapsed,
+            commands::remove_folder,
             commands::close_terminal,
             commands::close_project,
             commands::recent_folders,

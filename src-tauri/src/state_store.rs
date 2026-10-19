@@ -33,6 +33,18 @@ pub struct ProjectRecord {
     pub created_at: String,
     #[serde(default)]
     pub terminals: Vec<TerminalRecord>,
+    /// id of the sidebar folder this project sits in; None means loose
+    #[serde(default)]
+    pub folder: Option<String>,
+}
+
+/// A named group of projects in the sidebar. It shows only while a project points at it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct FolderRecord {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub collapsed: bool,
 }
 
 impl ProjectRecord {
@@ -100,6 +112,7 @@ pub fn session_to_project(s: SessionRecordV1) -> ProjectRecord {
             claude_session_id: s.claude_session_id,
             created_at,
         }],
+        folder: None,
     }
 }
 
@@ -107,6 +120,7 @@ fn from_v1(v1: StateV1) -> AppState {
     AppState {
         version: STATE_VERSION,
         projects: v1.sessions.into_iter().map(session_to_project).collect(),
+        folders: Vec::new(),
         recent_folders: v1.recent_folders,
         settings: v1.settings,
         restore_all_on_launch: v1.restore_all_on_launch,
@@ -133,6 +147,7 @@ pub struct AppState {
     /// schema version of this file; bump when a migration is needed
     #[serde(default = "state_version")] pub version: u32,
     #[serde(default)] pub projects: Vec<ProjectRecord>,
+    #[serde(default)] pub folders: Vec<FolderRecord>,
     #[serde(default)] pub recent_folders: HashMap<String, Vec<String>>,
     #[serde(default)] pub settings: AppSettings,
     /// set before a self-restart so the next launch restores all projects without asking
@@ -143,7 +158,7 @@ pub const STATE_VERSION: u32 = 2;
 fn state_version() -> u32 { STATE_VERSION }
 impl Default for AppState {
     fn default() -> Self {
-        Self { version: STATE_VERSION, projects: Vec::new(), recent_folders: HashMap::new(),
+        Self { version: STATE_VERSION, projects: Vec::new(), folders: Vec::new(), recent_folders: HashMap::new(),
                settings: AppSettings::default(), restore_all_on_launch: false }
     }
 }
@@ -169,6 +184,11 @@ impl AppState {
             return Some((pid, true));
         }
         Some((pid, false))
+    }
+
+    /// Drop folders that none of `projects` sits in.
+    pub fn prune_folders(&mut self, projects: &[ProjectRecord]) {
+        self.folders.retain(|f| projects.iter().any(|p| p.folder.as_ref() == Some(&f.id)));
     }
 }
 
@@ -217,7 +237,7 @@ mod tests {
     fn project(id: &str, terminals: Vec<TerminalRecord>) -> ProjectRecord {
         ProjectRecord {
             id: id.into(), name: "n".into(), profile_id: "p".into(),
-            cwd: "/tmp".into(), created_at: "2026-09-17".into(), terminals,
+            cwd: "/tmp".into(), created_at: "2026-09-17".into(), terminals, folder: None,
         }
     }
 
@@ -341,6 +361,19 @@ mod tests {
         assert!(s.project_of("zz").is_none());
         s.project_of_mut("c1").unwrap().name = "renamed".into();
         assert_eq!(s.projects[0].name, "renamed");
+    }
+
+    #[test]
+    fn prune_folders_keeps_only_used_ones() {
+        let mut s = AppState::default();
+        for id in ["used", "empty"] {
+            s.folders.push(FolderRecord { id: id.into(), name: id.into(), collapsed: false });
+        }
+        let mut p = project("a", vec![]);
+        p.folder = Some("used".into());
+        s.prune_folders(&[p]);
+        assert_eq!(s.folders.len(), 1);
+        assert_eq!(s.folders[0].id, "used");
     }
 
     #[test]

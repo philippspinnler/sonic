@@ -28,3 +28,35 @@ export function cycleTerminal(p: ProjectView, currentId: string | null, dir: 1 |
 export function terminalLabel(p: ProjectView, t: TerminalView): string {
   return p.terminals.length > 1 ? `${p.name} · ${t.name}` : p.name;
 }
+
+/** Sidebar order: a folder sits where its first project is, with all its projects right after. */
+export function displayOrder(projects: ProjectView[]): ProjectView[] {
+  const out: ProjectView[] = [];
+  for (const p of projects) {
+    if (out.includes(p)) continue;
+    if (p.folder) out.push(...projects.filter(x => x.folder?.id === p.folder!.id));
+    else out.push(p);
+  }
+  return out;
+}
+
+/** Projects in sidebar order, minus those hidden in a collapsed folder (⌘1…⌘9). */
+export function visibleProjects(projects: ProjectView[]): ProjectView[] {
+  return displayOrder(projects).filter(p => !p.folder?.collapsed);
+}
+
+/** Folder dot: the most urgent project status inside it. */
+export function folderStatus(members: ProjectView[]): Status {
+  const votes = members.map(rollupStatus);
+  return RANK.find(s => votes.includes(s)) ?? "idle";
+}
+
+export interface Placement {
+  id: string;
+  folder: string | null;
+}
+
+/** Each project's position and folder, as `arrange_projects` takes it. */
+export function layoutOf(projects: ProjectView[]): Placement[] {
+  return displayOrder(projects).map(p => ({ id: p.id, folder: p.folder?.id ?? null }));
+}
