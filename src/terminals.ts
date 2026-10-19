@@ -80,7 +80,8 @@ export function showTerminal(id: string | null): void {
     const pane = panes.get(id);
     requestAnimationFrame(() => {
       pane?.fit.fit();
-      pane?.term.focus();
+      // every store change lands here; don't pull focus out of a rename box or settings field
+      if (!(document.activeElement instanceof HTMLInputElement)) pane?.term.focus();
     });
   }
 }
